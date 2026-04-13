@@ -1,59 +1,61 @@
-# OpenCode Client for VS Code
+# OpenCode VS Code
 
-OpenCode Client for VS Code is a VS Code sidebar extension for OpenCode sessions.
+OpenCode VS Code is a VS Code sidebar client for OpenCode.
 
-It embeds the OpenCode app in a VS Code webview and keeps session behavior tied to the currently open workspace folder.
+Repository: `https://github.com/rodrigomart123/opencode-vscode`
 
-## What it does
+## Overview
 
-- Locks OpenCode to the active VS Code workspace folder.
-- Restores the latest session for the current folder when the sidebar opens.
-- Syncs light and dark theme from VS Code into the webview.
-- Shows provider icons in provider settings and model selection.
-- Connects to an existing OpenCode server or starts a local one when auto start is enabled.
+- Runs OpenCode inside a VS Code webview sidebar
+- Uses the active VS Code workspace folder as the OpenCode working directory
+- Connects to an existing OpenCode server, with optional local server management
+- Supports starting new sessions, refreshing state, and opening settings from VS Code commands
+
+## Auto-start behavior
+
+Yes, OpenCode auto-start is enabled by default.
+
+- Setting: `opencodeVisual.autoStartServer`
+- Default value: `true`
+- When the configured server is unreachable, the extension automatically starts `opencode serve`
+
+If you disable it (`false`), the extension will only connect to an already running server.
 
 ## Requirements
 
-- VS Code `1.96.0` or newer.
-- Node.js `20+` and npm.
-- OpenCode CLI installed, either on PATH or set via `opencodeVisual.opencodePath`.
-- Optional for rebuilding the embedded webview app: clone `https://github.com/anomalyco/opencode` into `opencode-original/`.
+- VS Code `1.96.0` or newer
+- OpenCode CLI installed (`opencode` on PATH), or configure `opencodeVisual.opencodePath`
+- Node.js `20+` and npm (only needed when building/packaging from source)
 
-## Local setup
+## Install as a normal VS Code extension
 
-1. Install dependencies:
+1. Build and package VSIX:
 
    ```bash
    npm install
+   npm run build
+   npx @vscode/vsce package
    ```
 
-2. (Optional) Rebuild webview bundle from upstream OpenCode sources:
+2. Install VSIX in VS Code:
+   - Open Extensions view
+   - Click `...` (top-right)
+   - Select `Install from VSIX...`
+   - Choose the generated `.vsix` file (for example `opencode-vscode-0.0.1.vsix`)
 
-   ```bash
-   git clone https://github.com/anomalyco/opencode opencode-original
-   npm run build:webview
-   ```
+Optional CLI install:
 
-3. Build the extension bundle:
+```bash
+code --install-extension .\opencode-vscode-0.0.1.vsix
+```
 
-   ```bash
-   npm run build:extension
-   ```
+Then reload VS Code and open the OpenCode icon in the Activity Bar.
 
-4. Start the extension in development mode:
+## Development
 
-   - Open this folder in VS Code.
-   - Press `F5` (or run `Run OpenCode Visual` from the debug dropdown).
-
-5. In the Extension Development Host window, open the OpenCode icon in the Activity Bar.
-
-## How to use
-
-1. Open a workspace folder in VS Code.
-2. Open the OpenCode sidebar.
-3. Create a new session from the `+` button in the view title, or run `OpenCode: New Session`.
-4. Send prompts in the sidebar input.
-5. Open model and provider settings from the UI when needed.
+- Open this folder in VS Code
+- Press `F5` to launch Extension Development Host
+- Open the OpenCode sidebar in the host window
 
 ## Commands
 
@@ -63,16 +65,9 @@ It embeds the OpenCode app in a VS Code webview and keeps session behavior tied 
 - `OpenCode: Open Settings`
 - `OpenCode: Restart Local Server`
 
-## Extension settings
+## Settings
 
 - `opencodeVisual.opencodePath`
 - `opencodeVisual.serverBaseUrl`
 - `opencodeVisual.autoStartServer`
 - `opencodeVisual.debugServerLogs`
-
-## Release and safety notes
-
-- Build succeeds with `npm run build:webview` and `npm run build:extension`.
-- `npm run check` currently reports one upstream type error in `opencode-original/packages/app/src/testing/prompt.ts` for `./terminal`.
-- No hardcoded real secrets were found in local extension source paths (`src/`, `webview/`, `docs/`).
-- Upstream test fixtures under `opencode-original/packages/opencode/test` contain fake example tokens such as `test-openai-key`.

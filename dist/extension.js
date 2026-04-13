@@ -5788,7 +5788,7 @@ var OpenCodeService = class {
     };
   }
   stateEmitter = new vscode.EventEmitter();
-  output = vscode.window.createOutputChannel("OpenCode Visual");
+  output = vscode.window.createOutputChannel("OpenCode VS Code");
   client;
   server;
   streamAbort;
@@ -7390,7 +7390,7 @@ async function activate(context) {
     vscode4.commands.registerCommand("opencodeVisual.openSettings", async () => {
       await vscode4.commands.executeCommand(
         "workbench.action.openSettings",
-        "@ext:local.opencode-visual opencodeVisual"
+        "@ext:local.opencode-vscode opencodeVisual"
       );
     }),
     vscode4.commands.registerCommand("opencodeVisual.restartServer", async () => {

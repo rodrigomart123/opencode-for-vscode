@@ -1,17 +1,17 @@
 {
-  "name": "opencode-visual",
-  "displayName": "OpenCode Client for VS Code",
+  "name": "opencode-vscode",
+  "displayName": "OpenCode VS Code",
   "description": "VS Code sidebar client for OpenCode sessions.",
   "version": "0.0.1",
   "publisher": "local",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rodrigomart123/opencode-client-for-vs-code.git"
+    "url": "https://github.com/rodrigomart123/opencode-vscode.git"
   },
-  "homepage": "https://github.com/rodrigomart123/opencode-client-for-vs-code#readme",
+  "homepage": "https://github.com/rodrigomart123/opencode-vscode#readme",
   "bugs": {
-    "url": "https://github.com/rodrigomart123/opencode-client-for-vs-code/issues"
+    "url": "https://github.com/rodrigomart123/opencode-vscode/issues"
   },
   "engines": {
     "vscode": "^1.96.0"
@@ -110,7 +110,7 @@
       ]
     },
     "configuration": {
-      "title": "OpenCode Client for VS Code",
+      "title": "OpenCode VS Code",
       "properties": {
         "opencodeVisual.opencodePath": {
           "type": "string",
@@ -130,17 +130,17 @@
         "opencodeVisual.debugServerLogs": {
           "type": "boolean",
           "default": false,
-          "description": "Stream local OpenCode server stdout/stderr into the OpenCode Visual output channel."
+          "description": "Stream local OpenCode server stdout/stderr into the OpenCode VS Code output channel."
         }
       }
     }
   },
   "scripts": {
     "build": "npm run build:webview && npm run build:extension",
-    "build:extension": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --sourcemap=false --outfile=dist/extension.js",
+    "build:extension": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js",
     "build:webview": "vite build",
     "watch": "npm run watch:extension",
-    "watch:extension": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --sourcemap=false --outfile=dist/extension.js --watch",
+    "watch:extension": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js --watch",
     "watch:webview": "vite build --watch",
     "check": "tsc -p . --noEmit && tsc -p tsconfig.webview.json --noEmit"
   },

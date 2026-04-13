@@ -97,7 +97,7 @@ function resolveUtil(id: string) {
 
 function sourceAlias(): Plugin {
   return {
-    name: "opencode-visual:source-alias",
+    name: "opencode-vscode:source-alias",
     resolveId(id) {
       return resolveApp(id) ?? resolveUi(id) ?? resolveSdk(id) ?? resolveUtil(id) ?? null
     },

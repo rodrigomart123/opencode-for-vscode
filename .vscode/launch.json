@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run OpenCode Visual",
+      "name": "Run OpenCode VS Code",
       "type": "extensionHost",
       "request": "launch",
       "args": [
