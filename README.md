@@ -1,6 +1,6 @@
-# OpenCode Visual
+# OpenCode Client for VS Code
 
-OpenCode Visual is a VS Code sidebar extension for OpenCode sessions.
+OpenCode Client for VS Code is a VS Code sidebar extension for OpenCode sessions.
 
 It embeds the OpenCode app in a VS Code webview and keeps session behavior tied to the currently open workspace folder.
 
@@ -17,6 +17,7 @@ It embeds the OpenCode app in a VS Code webview and keeps session behavior tied 
 - VS Code `1.96.0` or newer.
 - Node.js `20+` and npm.
 - OpenCode CLI installed, either on PATH or set via `opencodeVisual.opencodePath`.
+- Optional for rebuilding the embedded webview app: clone `https://github.com/anomalyco/opencode` into `opencode-original/`.
 
 ## Local setup
 
@@ -26,18 +27,25 @@ It embeds the OpenCode app in a VS Code webview and keeps session behavior tied 
    npm install
    ```
 
-2. Build the extension and webview bundles:
+2. (Optional) Rebuild webview bundle from upstream OpenCode sources:
 
    ```bash
-   npm run build
+   git clone https://github.com/anomalyco/opencode opencode-original
+   npm run build:webview
    ```
 
-3. Start the extension in development mode:
+3. Build the extension bundle:
+
+   ```bash
+   npm run build:extension
+   ```
+
+4. Start the extension in development mode:
 
    - Open this folder in VS Code.
    - Press `F5` (or run `Run OpenCode Visual` from the debug dropdown).
 
-4. In the Extension Development Host window, open the OpenCode icon in the Activity Bar.
+5. In the Extension Development Host window, open the OpenCode icon in the Activity Bar.
 
 ## How to use
 
