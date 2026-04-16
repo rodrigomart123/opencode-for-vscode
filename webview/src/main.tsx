@@ -500,6 +500,16 @@ const platform: Platform = {
     }
     window.open(url, "_blank", "noopener,noreferrer");
   },
+  openDiff(input) {
+    if (!vscode) return Promise.resolve();
+    vscode.postMessage({
+      type: "openDiff",
+      filePath: input.filePath,
+      before: input.before,
+      after: input.after,
+    });
+    return Promise.resolve();
+  },
   back() {
     window.history.back();
   },

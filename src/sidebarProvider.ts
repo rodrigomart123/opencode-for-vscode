@@ -76,6 +76,11 @@ export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vsco
         return;
       }
 
+      if (message.type === "openDiff") {
+        await this.openDiff(message.filePath, message.before, message.after);
+        return;
+      }
+
       if (message.type === "pickDirectory") {
         this.postMessage({
           type: "pickDirectoryResult",

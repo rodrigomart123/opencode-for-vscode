@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.5 - 2026-04-16
+
+- Added host-bridged `openDiff` action wiring from webview tool rows (`edit`, `write`, `apply_patch`) so diff requests can route to VS Code.
+- Updated bundled webview assets with tool-row narrow-width responsiveness and settings dialog layout fixes.
+
 ## 0.1.4 - 2026-04-15
 
 - Fixed webview startup compatibility for servers that do not expose `/global/health`, preventing false "Could not reach ..." lock screens.

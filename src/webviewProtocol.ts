@@ -40,6 +40,12 @@ export type WebviewToHostMessage =
       url: string;
     }
   | {
+      type: "openDiff";
+      filePath: string;
+      before: string;
+      after: string;
+    }
+  | {
       type: "pickDirectory";
       requestId: string;
       title?: string;
