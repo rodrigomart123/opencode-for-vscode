@@ -1,10 +1,12 @@
 import * as vscode from "vscode";
 import { OpenCodeService } from "./opencodeService";
 import { OpenCodeSidebarProvider } from "./sidebarProvider";
+import { OpenCodeSettingsPanel } from "./settingsPanel";
 
 export async function activate(context: vscode.ExtensionContext) {
   const service = new OpenCodeService(context);
   const provider = new OpenCodeSidebarProvider(context, service);
+  const settingsPanel = new OpenCodeSettingsPanel(context, service);
 
   const syncWorkspace = (reloadOnChange: boolean) => {
     void service
@@ -20,7 +22,7 @@ export async function activate(context: vscode.ExtensionContext) {
       });
   };
 
-  context.subscriptions.push(service, provider);
+  context.subscriptions.push(service, provider, settingsPanel);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(OpenCodeSidebarProvider.viewId, provider, {
       webviewOptions: {
@@ -36,11 +38,19 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       syncWorkspace(true);
     }),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (!event.affectsConfiguration("opencodeVisual")) {
+        return;
+      }
+      void provider.reload();
+      void settingsPanel.reload();
+    }),
     vscode.window.onDidChangeVisibleTextEditors(() => {
       syncWorkspace(false);
     }),
     vscode.window.onDidChangeActiveColorTheme(() => {
       provider.notifyTheme();
+      settingsPanel.notifyTheme();
     }),
   );
 
@@ -57,15 +67,12 @@ export async function activate(context: vscode.ExtensionContext) {
       await provider.reveal();
     }),
     vscode.commands.registerCommand("opencodeVisual.openSettings", async () => {
-      await vscode.commands.executeCommand(
-        "workbench.action.openSettings",
-        "@ext:rodrigomart123.opencode-for-vscode opencodeVisual",
-      );
+      await settingsPanel.open();
     }),
     vscode.commands.registerCommand("opencodeVisual.restartServer", async () => {
       await service.ensureServerReady(true);
       await provider.reload();
-      await provider.reveal();
+      await settingsPanel.reload();
     }),
   );
 

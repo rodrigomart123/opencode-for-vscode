@@ -1,4 +1,3 @@
-import * as path from "node:path";
 import * as vscode from "vscode";
 import { getWebviewHtml } from "./webviewHtml";
 import { OpenCodeService } from "./opencodeService";
@@ -37,106 +36,131 @@ type NativeSettings = {
   modelVisibility: Record<string, "show" | "hide"> | null;
 };
 
-export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vscode.Disposable {
-  static readonly viewId = "opencodeVisual.sidebar";
-  private static readonly diffScheme = "opencode-diff";
-  private static readonly maxDiffEntries = 200;
-
-  private readonly disposables: vscode.Disposable[] = [];
-  private readonly fetches = new Map<string, AbortController>();
-  private readonly diffContent = new Map<string, string>();
-  private view?: vscode.WebviewView;
+export class OpenCodeSettingsPanel implements vscode.Disposable {
+  private panel?: vscode.WebviewPanel;
   private ready = false;
   private readonly pendingMessages: HostToWebviewMessage[] = [];
+  private readonly fetches = new Map<string, AbortController>();
+  private panelDisposables: vscode.Disposable[] = [];
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly service: OpenCodeService,
-  ) {
-    this.disposables.push(
-      vscode.workspace.registerTextDocumentContentProvider(OpenCodeSidebarProvider.diffScheme, {
-        provideTextDocumentContent: (uri) => this.diffContent.get(uri.toString()) ?? "",
-      }),
-      vscode.workspace.onDidCloseTextDocument((document) => {
-        if (document.uri.scheme !== OpenCodeSidebarProvider.diffScheme) {
-          return;
-        }
-        this.diffContent.delete(document.uri.toString());
-      }),
-    );
-  }
+  ) {}
 
   dispose() {
-    vscode.Disposable.from(...this.disposables).dispose();
+    for (const abort of this.fetches.values()) {
+      abort.abort();
+    }
+    this.fetches.clear();
+    this.disposePanel();
   }
 
-  async reveal() {
-    await vscode.commands.executeCommand("workbench.view.extension.opencodeVisual");
-    this.view?.show?.(true);
+  async open() {
+    if (!this.panel) {
+      await this.createPanel();
+      this.dispatchAction("openSettings");
+      return;
+    }
+
+    try {
+      this.panel.reveal(vscode.ViewColumn.Active, false);
+      await this.render();
+    } catch {
+      this.panel = undefined;
+      this.clearPanelState();
+      await this.createPanel();
+    }
+
+    this.dispatchAction("openSettings");
   }
 
   async reload() {
-    await this.render();
-  }
-
-  async openSettings() {
-    await vscode.commands.executeCommand("opencodeVisual.openSettings");
-  }
-
-  private getExtensionSettings(): ExtensionSettings {
-    const config = vscode.workspace.getConfiguration("opencodeVisual");
-    return {
-      opencodePath: config.get<string>("opencodePath", "opencode"),
-      serverBaseUrl: config.get<string>("serverBaseUrl", "http://127.0.0.1:4096"),
-      autoStartServer: config.get<boolean>("autoStartServer", true),
-      debugServerLogs: config.get<boolean>("debugServerLogs", false),
-    };
-  }
-
-  private async setExtensionSetting(key: ExtensionSettingKey, value: string | boolean) {
-    const config = vscode.workspace.getConfiguration("opencodeVisual");
-
-    if ((key === "opencodePath" || key === "serverBaseUrl") && typeof value !== "string") {
-      throw new Error(`Invalid value for ${key}`);
+    if (!this.panel) {
+      return;
     }
 
-    if ((key === "autoStartServer" || key === "debugServerLogs") && typeof value !== "boolean") {
-      throw new Error(`Invalid value for ${key}`);
+    try {
+      await this.render();
+    } catch (error) {
+      if (this.isDisposedError(error)) {
+        this.resetDisposedPanel();
+        return;
+      }
+      throw error;
     }
-
-    await config.update(key, value, vscode.ConfigurationTarget.Global);
-    return this.getExtensionSettings();
-  }
-
-  dispatchAction(action: HostAction) {
-    this.postMessage({ type: "hostAction", action });
   }
 
   notifyTheme() {
+    if (!this.panel) {
+      return;
+    }
     this.postMessage({
       type: "hostTheme",
       colorScheme: this.getColorScheme(),
     });
   }
 
-  async resolveWebviewView(webviewView: vscode.WebviewView) {
-    this.view = webviewView;
+  private async createPanel() {
+    const panel = vscode.window.createWebviewPanel(
+      "opencodeVisual.settings",
+      "OpenCode Settings",
+      {
+        viewColumn: vscode.ViewColumn.Active,
+        preserveFocus: false,
+      },
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "media")],
+      },
+    );
+
+    this.panel = panel;
     this.ready = false;
-    webviewView.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "media")],
-    };
-    const receiveDisposable = webviewView.webview.onDidReceiveMessage(async (message: WebviewToHostMessage) => {
+    const receiveDisposable = panel.webview.onDidReceiveMessage(async (message: WebviewToHostMessage) => {
       await this.handleMessage(message);
     });
-
-    const disposeDisposable = webviewView.onDidDispose(() => {
-      this.view = undefined;
-      receiveDisposable.dispose();
+    const disposeDisposable = panel.onDidDispose(() => {
+      if (this.panel !== panel) {
+        return;
+      }
+      this.panel = undefined;
+      this.clearPanelState();
     });
 
-    this.disposables.push(receiveDisposable, disposeDisposable);
+    this.panelDisposables.push(receiveDisposable, disposeDisposable);
     await this.render();
+  }
+
+  private disposePanel() {
+    const panel = this.panel;
+    this.panel = undefined;
+    this.clearPanelState();
+    if (panel) {
+      panel.dispose();
+    }
+  }
+
+  private clearPanelState() {
+    this.ready = false;
+    this.pendingMessages.length = 0;
+    for (const abort of this.fetches.values()) {
+      abort.abort();
+    }
+    this.fetches.clear();
+    vscode.Disposable.from(...this.panelDisposables).dispose();
+    this.panelDisposables = [];
+  }
+
+  private isDisposedError(error: unknown) {
+    const text = error instanceof Error ? error.message : String(error ?? "");
+    return /webview is disposed|disposed/i.test(text);
+  }
+
+  private resetDisposedPanel() {
+    this.panel = undefined;
+    this.clearPanelState();
   }
 
   private async handleMessage(message: WebviewToHostMessage) {
@@ -144,7 +168,6 @@ export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vsco
       if (message.type === "webviewReady") {
         this.ready = true;
         this.flushMessages();
-        this.notifyTheme();
         return;
       }
 
@@ -159,7 +182,7 @@ export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vsco
       }
 
       if (message.type === "openSettings") {
-        await this.openSettings();
+        this.dispatchAction("openSettings");
         return;
       }
 
@@ -229,16 +252,15 @@ export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vsco
         }
         return;
       }
-
-      return;
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(messageText);
+      void vscode.window.showErrorMessage(messageText);
     }
   }
 
   private async render() {
-    if (!this.view) {
+    const panel = this.panel;
+    if (!panel) {
       return;
     }
 
@@ -252,15 +274,29 @@ export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vsco
       disableHealthCheck = true;
       serverUrl = this.service.getResolvedServerBaseUrl();
     }
+
     const workspaceDirectory = this.service.getWorkspaceContext().directory ?? null;
-    this.view.webview.html = getWebviewHtml(this.view.webview, this.context.extensionUri, {
-      serverUrl,
-      version: String(this.context.extension.packageJSON.version ?? "0.0.0"),
-      workspaceDirectory,
-      colorScheme: this.getColorScheme(),
-      disableHealthCheck,
-      nativeSettings: this.getNativeSettings(),
-    });
+    if (this.panel !== panel) {
+      return;
+    }
+
+    try {
+      panel.webview.html = getWebviewHtml(panel.webview, this.context.extensionUri, {
+        serverUrl,
+        version: String(this.context.extension.packageJSON.version ?? "0.0.0"),
+        workspaceDirectory,
+        colorScheme: this.getColorScheme(),
+        disableHealthCheck,
+        settingsMode: true,
+        nativeSettings: this.getNativeSettings(),
+      });
+    } catch (error) {
+      if (this.isDisposedError(error)) {
+        this.resetDisposedPanel();
+        return;
+      }
+      throw error;
+    }
   }
 
   private getNativeSettings(): NativeSettings {
@@ -291,6 +327,31 @@ export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vsco
       customKeybinds: config.get<Record<string, string> | null>("customKeybinds", null),
       modelVisibility: config.get<Record<string, "show" | "hide"> | null>("modelVisibility", null),
     };
+  }
+
+  private getExtensionSettings(): ExtensionSettings {
+    const config = vscode.workspace.getConfiguration("opencodeVisual");
+    return {
+      opencodePath: config.get<string>("opencodePath", "opencode"),
+      serverBaseUrl: config.get<string>("serverBaseUrl", "http://127.0.0.1:4096"),
+      autoStartServer: config.get<boolean>("autoStartServer", true),
+      debugServerLogs: config.get<boolean>("debugServerLogs", false),
+    };
+  }
+
+  private async setExtensionSetting(key: ExtensionSettingKey, value: string | boolean) {
+    const config = vscode.workspace.getConfiguration("opencodeVisual");
+
+    if ((key === "opencodePath" || key === "serverBaseUrl") && typeof value !== "string") {
+      throw new Error(`Invalid value for ${key}`);
+    }
+
+    if ((key === "autoStartServer" || key === "debugServerLogs") && typeof value !== "boolean") {
+      throw new Error(`Invalid value for ${key}`);
+    }
+
+    await config.update(key, value, vscode.ConfigurationTarget.Global);
+    return this.getExtensionSettings();
   }
 
   private async shouldDisableHealthCheck(serverUrl: string) {
@@ -339,76 +400,61 @@ export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vsco
     return "dark";
   }
 
-  private async openFile(
-    filePath: string,
-    range?: {
-      startLine: number;
-      startCharacter: number;
-      endLine: number;
-      endCharacter: number;
-    },
-  ) {
-    const baseDirectory = this.service.getActiveSessionDirectory();
-    const targetPath = path.isAbsolute(filePath) ? filePath : path.join(baseDirectory ?? "", filePath);
-    const uri = vscode.Uri.file(targetPath);
-    const document = await vscode.workspace.openTextDocument(uri);
-    const editor = await vscode.window.showTextDocument(document, { preview: false });
-
-    if (range) {
-      const selection = new vscode.Selection(
-        new vscode.Position(range.startLine, range.startCharacter),
-        new vscode.Position(range.endLine, range.endCharacter),
-      );
-      editor.selection = selection;
-      editor.revealRange(selection, vscode.TextEditorRevealType.InCenter);
-    }
-  }
-
   private async openDiff(filePath: string, before: string, after: string) {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const left = this.createDiffUri(filePath, "before", before, id);
-    const right = this.createDiffUri(filePath, "after", after, id);
+    const left = await vscode.workspace.openTextDocument({ content: before });
+    const right = await vscode.workspace.openTextDocument({ content: after });
     const title = `OpenCode Diff: ${filePath}`;
-    await vscode.commands.executeCommand("vscode.diff", left, right, title, { preview: false });
+    await vscode.commands.executeCommand("vscode.diff", left.uri, right.uri, title, { preview: false });
   }
 
-  private createDiffUri(filePath: string, side: "before" | "after", content: string, id: string) {
-    const normalized = filePath.replaceAll("\\", "/").replace(/^\/+/, "") || "untitled";
-    const uri = vscode.Uri.from({
-      scheme: OpenCodeSidebarProvider.diffScheme,
-      path: `/${side}/${id}/${normalized}`,
+  private dispatchAction(action: HostAction) {
+    this.postMessage({
+      type: "hostAction",
+      action,
     });
-    this.diffContent.set(uri.toString(), content);
-    this.trimDiffContent();
-    return uri;
   }
 
-  private trimDiffContent() {
-    while (this.diffContent.size > OpenCodeSidebarProvider.maxDiffEntries) {
-      const key = this.diffContent.keys().next().value;
-      if (!key) {
-        return;
-      }
-      this.diffContent.delete(key);
+  private postMessage(message: HostToWebviewMessage) {
+    const panel = this.panel;
+    if (!this.ready || !panel) {
+      this.pendingMessages.push(message);
+      return;
     }
+
+    this.sendMessage(panel, message);
   }
 
   private flushMessages() {
-    while (this.ready && this.view && this.pendingMessages.length > 0) {
+    while (this.ready && this.panel && this.pendingMessages.length > 0) {
       const message = this.pendingMessages.shift();
       if (!message) {
         return;
       }
-      void this.view.webview.postMessage(message);
+
+      const panel = this.panel;
+      if (!panel) {
+        return;
+      }
+      this.sendMessage(panel, message);
     }
   }
 
-  private postMessage(message: HostToWebviewMessage) {
-    if (!this.ready || !this.view) {
-      this.pendingMessages.push(message);
-      return;
+  private sendMessage(panel: vscode.WebviewPanel, message: HostToWebviewMessage) {
+    try {
+      void panel.webview.postMessage(message).then(undefined, (error) => {
+        if (this.isDisposedError(error)) {
+          this.resetDisposedPanel();
+          return;
+        }
+
+        const text = error instanceof Error ? error.message : String(error);
+        void vscode.window.showErrorMessage(text);
+      });
+    } catch (error) {
+      if (this.isDisposedError(error)) {
+        this.resetDisposedPanel();
+      }
     }
-    void this.view.webview.postMessage(message);
   }
 
   private resolveFetchUrl(input: string) {

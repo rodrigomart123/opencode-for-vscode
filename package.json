@@ -2,7 +2,7 @@
   "name": "opencode-for-vscode",
   "displayName": "OpenCode VS Code",
   "description": "VS Code sidebar client for OpenCode sessions.",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "publisher": "rodrigomart123",
   "license": "MIT",
   "icon": "icon.png",
@@ -140,6 +140,169 @@
           "type": "boolean",
           "default": false,
           "description": "Stream local OpenCode server stdout/stderr into the OpenCode VS Code output channel."
+        },
+        "opencodeVisual.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "en",
+            "zh",
+            "zht",
+            "ko",
+            "de",
+            "es",
+            "fr",
+            "da",
+            "ja",
+            "pl",
+            "ru",
+            "ar",
+            "no",
+            "br",
+            "th",
+            "bs",
+            "tr"
+          ],
+          "default": "auto",
+          "description": "OpenCode app language. Use 'auto' to follow system language detection."
+        },
+        "opencodeVisual.uiColorScheme": {
+          "type": "string",
+          "enum": [
+            "system",
+            "light",
+            "dark"
+          ],
+          "default": "system",
+          "description": "OpenCode app color scheme preference."
+        },
+        "opencodeVisual.themeId": {
+          "type": "string",
+          "default": "oc-2",
+          "description": "OpenCode UI theme id."
+        },
+        "opencodeVisual.uiFont": {
+          "type": "string",
+          "default": "",
+          "description": "UI font family override for OpenCode."
+        },
+        "opencodeVisual.codeFont": {
+          "type": "string",
+          "default": "",
+          "description": "Code font family override for OpenCode."
+        },
+        "opencodeVisual.autoSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-save edits in OpenCode sessions."
+        },
+        "opencodeVisual.fontSize": {
+          "type": "number",
+          "default": 14,
+          "minimum": 10,
+          "maximum": 28,
+          "description": "Font size used by OpenCode UI."
+        },
+        "opencodeVisual.showReasoningSummaries": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show reasoning summaries in the OpenCode feed when available."
+        },
+        "opencodeVisual.shellToolPartsExpanded": {
+          "type": "boolean",
+          "default": false,
+          "description": "Expand shell tool result parts by default in the OpenCode feed."
+        },
+        "opencodeVisual.editToolPartsExpanded": {
+          "type": "boolean",
+          "default": false,
+          "description": "Expand edit/apply_patch tool result parts by default in the OpenCode feed."
+        },
+        "opencodeVisual.releaseNotes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show release notes in OpenCode after updates."
+        },
+        "opencodeVisual.checkUpdatesOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check for OpenCode updates on startup."
+        },
+        "opencodeVisual.notifyAgent": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable desktop notifications for agent events."
+        },
+        "opencodeVisual.notifyPermissions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable desktop notifications for permission prompts."
+        },
+        "opencodeVisual.notifyErrors": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable desktop notifications for errors."
+        },
+        "opencodeVisual.soundAgentEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable sound for agent notifications."
+        },
+        "opencodeVisual.soundAgent": {
+          "type": "string",
+          "default": "staplebops-01",
+          "description": "Sound id used for agent notifications."
+        },
+        "opencodeVisual.soundPermissionsEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable sound for permission notifications."
+        },
+        "opencodeVisual.soundPermissions": {
+          "type": "string",
+          "default": "staplebops-02",
+          "description": "Sound id used for permission notifications."
+        },
+        "opencodeVisual.soundErrorsEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable sound for error notifications."
+        },
+        "opencodeVisual.soundErrors": {
+          "type": "string",
+          "default": "nope-03",
+          "description": "Sound id used for error notifications."
+        },
+        "opencodeVisual.autoAcceptWorkspacePermissions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-accept permission prompts for the current workspace."
+        },
+        "opencodeVisual.customKeybinds": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "default": null,
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Override OpenCode keybinds by command id. Example: { \"command.palette\": \"mod+shift+p\" }."
+        },
+        "opencodeVisual.modelVisibility": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "default": null,
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "show",
+              "hide"
+            ]
+          },
+          "description": "Per-model visibility map using keys like 'providerID/modelID' and values 'show' or 'hide'."
         }
       }
     }

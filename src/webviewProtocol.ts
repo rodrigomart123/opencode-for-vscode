@@ -1,5 +1,14 @@
 export type HostAction = "newSession" | "refresh" | "openSettings";
 
+export type ExtensionSettingKey = "opencodePath" | "serverBaseUrl" | "autoStartServer" | "debugServerLogs";
+
+export type ExtensionSettings = {
+  opencodePath: string;
+  serverBaseUrl: string;
+  autoStartServer: boolean;
+  debugServerLogs: boolean;
+};
+
 export type HostToWebviewMessage = {
   type: "hostAction";
   action: HostAction;
@@ -29,6 +38,20 @@ export type HostToWebviewMessage = {
   requestId: string;
   message: string;
   name?: string;
+} | {
+  type: "extensionSettingsResult";
+  requestId: string;
+  value: ExtensionSettings | null;
+  error?: string;
+} | {
+  type: "extensionSettingResult";
+  requestId: string;
+  value: ExtensionSettings | null;
+  error?: string;
+} | {
+  type: "restartServerResult";
+  requestId: string;
+  error?: string;
 };
 
 export type WebviewToHostMessage =
@@ -38,6 +61,9 @@ export type WebviewToHostMessage =
   | {
       type: "openLink";
       url: string;
+    }
+  | {
+      type: "openSettings";
     }
   | {
       type: "openDiff";
@@ -61,5 +87,19 @@ export type WebviewToHostMessage =
     }
   | {
       type: "fetchAbort";
+      requestId: string;
+    }
+  | {
+      type: "getExtensionSettings";
+      requestId: string;
+    }
+  | {
+      type: "setExtensionSetting";
+      requestId: string;
+      key: ExtensionSettingKey;
+      value: string | boolean;
+    }
+  | {
+      type: "restartServer";
       requestId: string;
     };

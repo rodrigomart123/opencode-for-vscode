@@ -279,7 +279,7 @@ var require_resolveCommand = __commonJS({
     var which = require_which();
     var getPathKey = require_path_key();
     function resolveCommandAttempt(parsed, withoutPathExt) {
-      const env2 = parsed.options.env || process.env;
+      const env3 = parsed.options.env || process.env;
       const cwd = process.cwd();
       const hasCustomCwd = parsed.options.cwd != null;
       const shouldSwitchCwd = hasCustomCwd && process.chdir !== void 0 && !process.chdir.disabled;
@@ -292,7 +292,7 @@ var require_resolveCommand = __commonJS({
       let resolved;
       try {
         resolved = which.sync(parsed.command, {
-          path: env2[getPathKey({ env: env2 })],
+          path: env3[getPathKey({ env: env3 })],
           pathExt: withoutPathExt ? path3.delimiter : void 0
         });
       } catch (e) {
@@ -534,7 +534,7 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode4 = __toESM(require("vscode"));
+var vscode5 = __toESM(require("vscode"));
 
 // src/opencodeService.ts
 var import_node_child_process = require("node:child_process");
@@ -5926,11 +5926,11 @@ var OpenCodeService = class {
     return false;
   }
   getState() {
-    const workspace4 = this.getWorkspaceContext();
+    const workspace5 = this.getWorkspaceContext();
     return {
       connection: this.connectionState,
       lastError: this.lastError,
-      workspace: workspace4,
+      workspace: workspace5,
       sessions: this.sessions,
       sessionStatuses: Object.fromEntries(this.sessionStatuses.entries()),
       activeSessionId: this.activeSessionId,
@@ -6360,8 +6360,8 @@ var OpenCodeService = class {
     return this.thread.at(-1);
   }
   async ensureReady(forceRefresh = false, forceRestartServer = false) {
-    const workspace4 = this.getWorkspaceContext();
-    const directory = workspace4.directory;
+    const workspace5 = this.getWorkspaceContext();
+    const directory = workspace5.directory;
     this.connectionState = {
       ...this.connectionState,
       baseUrl: this.getSettings().serverBaseUrl
@@ -6479,13 +6479,13 @@ var OpenCodeService = class {
     const statuses = this.unwrap(statusesResult);
     const providers = this.unwrap(providersResult);
     const agents = this.unwrap(agentsResult);
-    const commands4 = this.unwrap(commandsResult);
+    const commands5 = this.unwrap(commandsResult);
     const config = this.unwrap(configResult);
     const vcs = vcsResult ? this.unwrap(vcsResult) : void 0;
     const project = projectResult ? this.unwrap(projectResult) : null;
     this.sessions = [...sessions].sort((left, right) => right.time.updated - left.time.updated);
     this.sessionStatuses = new Map(Object.entries(statuses));
-    this.commands = commands4;
+    this.commands = commands5;
     this.agents = agents;
     this.providers = this.buildProviders(providers);
     this.models = this.flattenModels(providers);
@@ -7084,11 +7084,11 @@ var OpenCodeService = class {
       `--hostname=${hostname}`,
       `--port=${String(port)}`
     ];
-    const env2 = this.buildManagedServerEnv();
-    const command = await this.resolveOpencodeCommand(settings.opencodePath, env2.PATH);
+    const env3 = this.buildManagedServerEnv();
+    const command = await this.resolveOpencodeCommand(settings.opencodePath, env3.PATH);
     const proc = (0, import_node_child_process.spawn)(command, args, {
       cwd: this.currentDirectory,
-      env: env2,
+      env: env3,
       shell: process.platform === "win32" && (!this.looksLikeFilePath(command) || this.requiresWindowsShell(command)),
       stdio: "pipe"
     });
@@ -7169,21 +7169,21 @@ var OpenCodeService = class {
     this.server = void 0;
   }
   buildManagedServerEnv() {
-    const env2 = {
+    const env3 = {
       ...process.env
     };
     if (process.platform === "win32") {
-      return env2;
+      return env3;
     }
-    const current = this.splitPathEntries(env2.PATH);
+    const current = this.splitPathEntries(env3.PATH);
     const extras = this.getCommonBinaryDirectories();
     for (const entry of extras) {
       if (!current.includes(entry)) {
         current.push(entry);
       }
     }
-    env2.PATH = current.join(path.delimiter);
-    return env2;
+    env3.PATH = current.join(path.delimiter);
+    return env3;
   }
   getCommonBinaryDirectories() {
     if (process.platform === "win32") {
@@ -7470,23 +7470,205 @@ function createNonce() {
   return value;
 }
 var themePreload = `;(function () {
-  var key = "opencode-theme-id"
-  var themeId = localStorage.getItem(key) || "oc-2"
+  function setItem(key, value) {
+    try {
+      localStorage.setItem(key, value)
+    } catch {}
+  }
 
-  var cfg = window.__OPENCODE_VSCODE_CONFIG__
+  function getItem(key) {
+    try {
+      return localStorage.getItem(key)
+    } catch {
+      return null
+    }
+  }
+
+  function removeItem(key) {
+    try {
+      localStorage.removeItem(key)
+    } catch {}
+  }
+
+  function ensureObject(value) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value
+    }
+    return {}
+  }
+
+  function readJson(key, fallback) {
+    try {
+      var raw = getItem(key)
+      if (!raw) return fallback
+      var parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed
+      }
+      return fallback
+    } catch {
+      return fallback
+    }
+  }
+
+  function writeJson(key, value) {
+    try {
+      setItem(key, JSON.stringify(value))
+    } catch {}
+  }
+
+  function base64UrlEncode(value) {
+    try {
+      var bytes = new TextEncoder().encode(value)
+      var binary = ""
+      for (var index = 0; index < bytes.length; index += 1) {
+        binary += String.fromCharCode(bytes[index])
+      }
+      return btoa(binary).replace(/+/g, "-").replace(///g, "_").replace(/=/g, "")
+    } catch {
+      return ""
+    }
+  }
+
+  var cfg = window.__OPENCODE_VSCODE_CONFIG__ || {}
+  var nativeSettings = cfg.nativeSettings && typeof cfg.nativeSettings === "object" ? cfg.nativeSettings : null
+  var hasNativeScheme = false
+
+  if (nativeSettings) {
+    if (typeof nativeSettings.themeId === "string" && nativeSettings.themeId) {
+      setItem("opencode-theme-id", nativeSettings.themeId)
+    }
+
+    if (
+      nativeSettings.uiColorScheme === "system" ||
+      nativeSettings.uiColorScheme === "light" ||
+      nativeSettings.uiColorScheme === "dark"
+    ) {
+      setItem("opencode-color-scheme", nativeSettings.uiColorScheme)
+      hasNativeScheme = true
+    }
+
+    if (nativeSettings.language === "auto") {
+      removeItem("opencode.global.dat:language")
+    } else if (typeof nativeSettings.language === "string" && nativeSettings.language) {
+      writeJson("opencode.global.dat:language", { locale: nativeSettings.language })
+    }
+
+    var settings = ensureObject(readJson("settings.v3", {}))
+    settings.general = ensureObject(settings.general)
+    settings.updates = ensureObject(settings.updates)
+    settings.appearance = ensureObject(settings.appearance)
+    settings.notifications = ensureObject(settings.notifications)
+    settings.sounds = ensureObject(settings.sounds)
+
+    settings.general.showReasoningSummaries = !!nativeSettings.showReasoningSummaries
+    settings.general.shellToolPartsExpanded = !!nativeSettings.shellToolPartsExpanded
+    settings.general.editToolPartsExpanded = !!nativeSettings.editToolPartsExpanded
+    settings.general.autoSave = nativeSettings.autoSave !== false
+    settings.general.releaseNotes = nativeSettings.releaseNotes !== false
+    settings.updates.startup = nativeSettings.checkUpdatesOnStartup !== false
+    settings.appearance.sans = typeof nativeSettings.uiFont === "string" ? nativeSettings.uiFont : ""
+    settings.appearance.mono = typeof nativeSettings.codeFont === "string" ? nativeSettings.codeFont : ""
+    settings.appearance.fontSize =
+      typeof nativeSettings.fontSize === "number" && Number.isFinite(nativeSettings.fontSize)
+        ? Math.max(10, Math.min(28, nativeSettings.fontSize))
+        : 14
+
+    settings.notifications.agent = nativeSettings.notifyAgent !== false
+    settings.notifications.permissions = nativeSettings.notifyPermissions !== false
+    settings.notifications.errors = !!nativeSettings.notifyErrors
+
+    settings.sounds.agentEnabled = nativeSettings.soundAgentEnabled !== false
+    settings.sounds.agent =
+      typeof nativeSettings.soundAgent === "string" && nativeSettings.soundAgent
+        ? nativeSettings.soundAgent
+        : "staplebops-01"
+    settings.sounds.permissionsEnabled = nativeSettings.soundPermissionsEnabled !== false
+    settings.sounds.permissions =
+      typeof nativeSettings.soundPermissions === "string" && nativeSettings.soundPermissions
+        ? nativeSettings.soundPermissions
+        : "staplebops-02"
+    settings.sounds.errorsEnabled = nativeSettings.soundErrorsEnabled !== false
+    settings.sounds.errors =
+      typeof nativeSettings.soundErrors === "string" && nativeSettings.soundErrors
+        ? nativeSettings.soundErrors
+        : "nope-03"
+
+    if (
+      nativeSettings.customKeybinds &&
+      typeof nativeSettings.customKeybinds === "object" &&
+      !Array.isArray(nativeSettings.customKeybinds)
+    ) {
+      var keybinds = {}
+      for (var keybindId in nativeSettings.customKeybinds) {
+        if (!Object.prototype.hasOwnProperty.call(nativeSettings.customKeybinds, keybindId)) continue
+        var keybindValue = nativeSettings.customKeybinds[keybindId]
+        if (typeof keybindValue !== "string") continue
+        keybinds[keybindId] = keybindValue
+      }
+      settings.keybinds = keybinds
+    }
+
+    writeJson("settings.v3", settings)
+
+    if (
+      nativeSettings.modelVisibility &&
+      typeof nativeSettings.modelVisibility === "object" &&
+      !Array.isArray(nativeSettings.modelVisibility)
+    ) {
+      var modelStore = ensureObject(readJson("opencode.global.dat:model", {}))
+      var recent = Array.isArray(modelStore.recent) ? modelStore.recent : []
+      var variant = ensureObject(modelStore.variant)
+      var user = []
+      for (var modelKey in nativeSettings.modelVisibility) {
+        if (!Object.prototype.hasOwnProperty.call(nativeSettings.modelVisibility, modelKey)) continue
+        var visibility = nativeSettings.modelVisibility[modelKey]
+        if (visibility !== "show" && visibility !== "hide") continue
+        var slash = modelKey.indexOf("/")
+        if (slash <= 0 || slash >= modelKey.length - 1) continue
+        user.push({
+          providerID: modelKey.slice(0, slash),
+          modelID: modelKey.slice(slash + 1),
+          visibility: visibility,
+        })
+      }
+      modelStore.user = user
+      modelStore.recent = recent
+      modelStore.variant = variant
+      writeJson("opencode.global.dat:model", modelStore)
+    }
+
+    if (
+      typeof nativeSettings.autoAcceptWorkspacePermissions === "boolean" &&
+      typeof cfg.workspaceDirectory === "string" &&
+      cfg.workspaceDirectory
+    ) {
+      var permissionStore = ensureObject(readJson("opencode.global.dat:permission", {}))
+      permissionStore.autoAccept = ensureObject(permissionStore.autoAccept)
+      var key = base64UrlEncode(cfg.workspaceDirectory) + "/*"
+      if (key) {
+        permissionStore.autoAccept[key] = nativeSettings.autoAcceptWorkspacePermissions
+        writeJson("opencode.global.dat:permission", permissionStore)
+      }
+    }
+  }
+
+  var key = "opencode-theme-id"
+  var themeId = getItem(key) || "oc-2"
+
   var hostScheme = cfg && (cfg.colorScheme === "dark" || cfg.colorScheme === "light") ? cfg.colorScheme : null
-  if (hostScheme) {
-    localStorage.setItem("opencode-color-scheme", hostScheme)
+  if (hostScheme && !hasNativeScheme) {
+    setItem("opencode-color-scheme", hostScheme)
   }
 
   if (themeId === "oc-1") {
     themeId = "oc-2"
-    localStorage.setItem(key, themeId)
-    localStorage.removeItem("opencode-theme-css-light")
-    localStorage.removeItem("opencode-theme-css-dark")
+    setItem(key, themeId)
+    removeItem("opencode-theme-css-light")
+    removeItem("opencode-theme-css-dark")
   }
 
-  var scheme = hostScheme || localStorage.getItem("opencode-color-scheme") || "system"
+  var scheme = getItem("opencode-color-scheme") || hostScheme || "system"
   var isDark = scheme === "dark" || (scheme === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
   var mode = isDark ? "dark" : "light"
 
@@ -7495,7 +7677,7 @@ var themePreload = `;(function () {
 
   if (themeId === "oc-2") return
 
-  var css = localStorage.getItem("opencode-theme-css-" + mode)
+  var css = getItem("opencode-theme-css-" + mode)
   if (css) {
     var style = document.createElement("style")
     style.id = "oc-theme-preload"
@@ -7514,6 +7696,32 @@ function getWebviewHtml(webview, extensionUri, config) {
   const nonce = createNonce();
   const scriptUri = webview.asWebviewUri(vscode2.Uri.joinPath(extensionUri, "media", "app", "app.js"));
   const styleUri = webview.asWebviewUri(vscode2.Uri.joinPath(extensionUri, "media", "app", "app.css"));
+  const settingsBootStyle = config.settingsMode ? `<style nonce="${nonce}">
+    #root[data-settings-ready="false"] {
+      opacity: 0;
+    }
+
+    #root[data-settings-ready="true"] {
+      opacity: 1;
+    }
+
+    [data-tauri-drag-region],
+    [data-component="sidebar-nav-desktop"],
+    [data-component="sidebar-nav-mobile"],
+    [data-component="sidebar-rail"] {
+      display: none !important;
+    }
+
+    [data-component="dialog-overlay"] {
+      display: none !important;
+      pointer-events: none !important;
+    }
+
+    [data-component="dialog"][data-transition] [data-slot="dialog-content"] {
+      animation: none !important;
+      transition: none !important;
+    }
+  </style>` : "";
   return `<!DOCTYPE html>
 <html lang="en" style="background-color: var(--background-base)">
   <head>
@@ -7524,6 +7732,7 @@ function getWebviewHtml(webview, extensionUri, config) {
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link href="${styleUri}" rel="stylesheet" />
+    ${settingsBootStyle}
     <script nonce="${nonce}">window.__OPENCODE_VSCODE_CONFIG__ = ${JSON.stringify(config)};</script>
     <script nonce="${nonce}">${themePreload}</script>
     <title>OpenCode</title>
@@ -7536,14 +7745,28 @@ function getWebviewHtml(webview, extensionUri, config) {
 }
 
 // src/sidebarProvider.ts
-var OpenCodeSidebarProvider = class {
+var OpenCodeSidebarProvider = class _OpenCodeSidebarProvider {
   constructor(context, service) {
     this.context = context;
     this.service = service;
+    this.disposables.push(
+      vscode3.workspace.registerTextDocumentContentProvider(_OpenCodeSidebarProvider.diffScheme, {
+        provideTextDocumentContent: (uri) => this.diffContent.get(uri.toString()) ?? ""
+      }),
+      vscode3.workspace.onDidCloseTextDocument((document) => {
+        if (document.uri.scheme !== _OpenCodeSidebarProvider.diffScheme) {
+          return;
+        }
+        this.diffContent.delete(document.uri.toString());
+      })
+    );
   }
   static viewId = "opencodeVisual.sidebar";
+  static diffScheme = "opencode-diff";
+  static maxDiffEntries = 200;
   disposables = [];
   fetches = /* @__PURE__ */ new Map();
+  diffContent = /* @__PURE__ */ new Map();
   view;
   ready = false;
   pendingMessages = [];
@@ -7556,6 +7779,29 @@ var OpenCodeSidebarProvider = class {
   }
   async reload() {
     await this.render();
+  }
+  async openSettings() {
+    await vscode3.commands.executeCommand("opencodeVisual.openSettings");
+  }
+  getExtensionSettings() {
+    const config = vscode3.workspace.getConfiguration("opencodeVisual");
+    return {
+      opencodePath: config.get("opencodePath", "opencode"),
+      serverBaseUrl: config.get("serverBaseUrl", "http://127.0.0.1:4096"),
+      autoStartServer: config.get("autoStartServer", true),
+      debugServerLogs: config.get("debugServerLogs", false)
+    };
+  }
+  async setExtensionSetting(key, value) {
+    const config = vscode3.workspace.getConfiguration("opencodeVisual");
+    if ((key === "opencodePath" || key === "serverBaseUrl") && typeof value !== "string") {
+      throw new Error(`Invalid value for ${key}`);
+    }
+    if ((key === "autoStartServer" || key === "debugServerLogs") && typeof value !== "boolean") {
+      throw new Error(`Invalid value for ${key}`);
+    }
+    await config.update(key, value, vscode3.ConfigurationTarget.Global);
+    return this.getExtensionSettings();
   }
   dispatchAction(action) {
     this.postMessage({ type: "hostAction", action });
@@ -7599,6 +7845,10 @@ var OpenCodeSidebarProvider = class {
         await this.openDiff(message.filePath, message.before, message.after);
         return;
       }
+      if (message.type === "openSettings") {
+        await this.openSettings();
+        return;
+      }
       if (message.type === "pickDirectory") {
         this.postMessage({
           type: "pickDirectoryResult",
@@ -7614,6 +7864,50 @@ var OpenCodeSidebarProvider = class {
       }
       if (message.type === "fetchRequest") {
         await this.handleFetch(message);
+        return;
+      }
+      if (message.type === "getExtensionSettings") {
+        this.postMessage({
+          type: "extensionSettingsResult",
+          requestId: message.requestId,
+          value: this.getExtensionSettings()
+        });
+        return;
+      }
+      if (message.type === "setExtensionSetting") {
+        try {
+          const value = await this.setExtensionSetting(message.key, message.value);
+          this.postMessage({
+            type: "extensionSettingResult",
+            requestId: message.requestId,
+            value
+          });
+        } catch (error) {
+          const text = error instanceof Error ? error.message : String(error);
+          this.postMessage({
+            type: "extensionSettingResult",
+            requestId: message.requestId,
+            value: null,
+            error: text
+          });
+        }
+        return;
+      }
+      if (message.type === "restartServer") {
+        try {
+          await vscode3.commands.executeCommand("opencodeVisual.restartServer");
+          this.postMessage({
+            type: "restartServerResult",
+            requestId: message.requestId
+          });
+        } catch (error) {
+          const text = error instanceof Error ? error.message : String(error);
+          this.postMessage({
+            type: "restartServerResult",
+            requestId: message.requestId,
+            error: text
+          });
+        }
         return;
       }
       return;
@@ -7642,8 +7936,38 @@ var OpenCodeSidebarProvider = class {
       version: String(this.context.extension.packageJSON.version ?? "0.0.0"),
       workspaceDirectory,
       colorScheme: this.getColorScheme(),
-      disableHealthCheck
+      disableHealthCheck,
+      nativeSettings: this.getNativeSettings()
     });
+  }
+  getNativeSettings() {
+    const config = vscode3.workspace.getConfiguration("opencodeVisual");
+    return {
+      language: config.get("language", "auto"),
+      uiColorScheme: config.get("uiColorScheme", "system"),
+      themeId: config.get("themeId", "oc-2"),
+      uiFont: config.get("uiFont", ""),
+      codeFont: config.get("codeFont", ""),
+      autoSave: config.get("autoSave", true),
+      fontSize: config.get("fontSize", 14),
+      showReasoningSummaries: config.get("showReasoningSummaries", false),
+      shellToolPartsExpanded: config.get("shellToolPartsExpanded", false),
+      editToolPartsExpanded: config.get("editToolPartsExpanded", false),
+      releaseNotes: config.get("releaseNotes", true),
+      checkUpdatesOnStartup: config.get("checkUpdatesOnStartup", true),
+      notifyAgent: config.get("notifyAgent", true),
+      notifyPermissions: config.get("notifyPermissions", true),
+      notifyErrors: config.get("notifyErrors", false),
+      soundAgentEnabled: config.get("soundAgentEnabled", true),
+      soundAgent: config.get("soundAgent", "staplebops-01"),
+      soundPermissionsEnabled: config.get("soundPermissionsEnabled", true),
+      soundPermissions: config.get("soundPermissions", "staplebops-02"),
+      soundErrorsEnabled: config.get("soundErrorsEnabled", true),
+      soundErrors: config.get("soundErrors", "nope-03"),
+      autoAcceptWorkspacePermissions: config.get("autoAcceptWorkspacePermissions", false),
+      customKeybinds: config.get("customKeybinds", null),
+      modelVisibility: config.get("modelVisibility", null)
+    };
   }
   async shouldDisableHealthCheck(serverUrl) {
     let target;
@@ -7699,10 +8023,30 @@ var OpenCodeSidebarProvider = class {
     }
   }
   async openDiff(filePath, before, after) {
-    const left = await vscode3.workspace.openTextDocument({ content: before });
-    const right = await vscode3.workspace.openTextDocument({ content: after });
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const left = this.createDiffUri(filePath, "before", before, id);
+    const right = this.createDiffUri(filePath, "after", after, id);
     const title = `OpenCode Diff: ${filePath}`;
-    await vscode3.commands.executeCommand("vscode.diff", left.uri, right.uri, title, { preview: false });
+    await vscode3.commands.executeCommand("vscode.diff", left, right, title, { preview: false });
+  }
+  createDiffUri(filePath, side, content, id) {
+    const normalized = filePath.replaceAll("\\", "/").replace(/^\/+/, "") || "untitled";
+    const uri = vscode3.Uri.from({
+      scheme: _OpenCodeSidebarProvider.diffScheme,
+      path: `/${side}/${id}/${normalized}`
+    });
+    this.diffContent.set(uri.toString(), content);
+    this.trimDiffContent();
+    return uri;
+  }
+  trimDiffContent() {
+    while (this.diffContent.size > _OpenCodeSidebarProvider.maxDiffEntries) {
+      const key = this.diffContent.keys().next().value;
+      if (!key) {
+        return;
+      }
+      this.diffContent.delete(key);
+    }
   }
   flushMessages() {
     while (this.ready && this.view && this.pendingMessages.length > 0) {
@@ -7840,10 +8184,502 @@ var OpenCodeSidebarProvider = class {
   }
 };
 
+// src/settingsPanel.ts
+var vscode4 = __toESM(require("vscode"));
+var OpenCodeSettingsPanel = class {
+  constructor(context, service) {
+    this.context = context;
+    this.service = service;
+  }
+  panel;
+  ready = false;
+  pendingMessages = [];
+  fetches = /* @__PURE__ */ new Map();
+  panelDisposables = [];
+  dispose() {
+    for (const abort of this.fetches.values()) {
+      abort.abort();
+    }
+    this.fetches.clear();
+    this.disposePanel();
+  }
+  async open() {
+    if (!this.panel) {
+      await this.createPanel();
+      this.dispatchAction("openSettings");
+      return;
+    }
+    try {
+      this.panel.reveal(vscode4.ViewColumn.Active, false);
+      await this.render();
+    } catch {
+      this.panel = void 0;
+      this.clearPanelState();
+      await this.createPanel();
+    }
+    this.dispatchAction("openSettings");
+  }
+  async reload() {
+    if (!this.panel) {
+      return;
+    }
+    try {
+      await this.render();
+    } catch (error) {
+      if (this.isDisposedError(error)) {
+        this.resetDisposedPanel();
+        return;
+      }
+      throw error;
+    }
+  }
+  notifyTheme() {
+    if (!this.panel) {
+      return;
+    }
+    this.postMessage({
+      type: "hostTheme",
+      colorScheme: this.getColorScheme()
+    });
+  }
+  async createPanel() {
+    const panel = vscode4.window.createWebviewPanel(
+      "opencodeVisual.settings",
+      "OpenCode Settings",
+      {
+        viewColumn: vscode4.ViewColumn.Active,
+        preserveFocus: false
+      },
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode4.Uri.joinPath(this.context.extensionUri, "media")]
+      }
+    );
+    this.panel = panel;
+    this.ready = false;
+    const receiveDisposable = panel.webview.onDidReceiveMessage(async (message) => {
+      await this.handleMessage(message);
+    });
+    const disposeDisposable = panel.onDidDispose(() => {
+      if (this.panel !== panel) {
+        return;
+      }
+      this.panel = void 0;
+      this.clearPanelState();
+    });
+    this.panelDisposables.push(receiveDisposable, disposeDisposable);
+    await this.render();
+  }
+  disposePanel() {
+    const panel = this.panel;
+    this.panel = void 0;
+    this.clearPanelState();
+    if (panel) {
+      panel.dispose();
+    }
+  }
+  clearPanelState() {
+    this.ready = false;
+    this.pendingMessages.length = 0;
+    for (const abort of this.fetches.values()) {
+      abort.abort();
+    }
+    this.fetches.clear();
+    vscode4.Disposable.from(...this.panelDisposables).dispose();
+    this.panelDisposables = [];
+  }
+  isDisposedError(error) {
+    const text = error instanceof Error ? error.message : String(error ?? "");
+    return /webview is disposed|disposed/i.test(text);
+  }
+  resetDisposedPanel() {
+    this.panel = void 0;
+    this.clearPanelState();
+  }
+  async handleMessage(message) {
+    try {
+      if (message.type === "webviewReady") {
+        this.ready = true;
+        this.flushMessages();
+        return;
+      }
+      if (message.type === "openLink") {
+        await vscode4.env.openExternal(vscode4.Uri.parse(message.url));
+        return;
+      }
+      if (message.type === "openDiff") {
+        await this.openDiff(message.filePath, message.before, message.after);
+        return;
+      }
+      if (message.type === "openSettings") {
+        this.dispatchAction("openSettings");
+        return;
+      }
+      if (message.type === "pickDirectory") {
+        this.postMessage({
+          type: "pickDirectoryResult",
+          requestId: message.requestId,
+          value: null
+        });
+        return;
+      }
+      if (message.type === "fetchAbort") {
+        this.fetches.get(message.requestId)?.abort();
+        this.fetches.delete(message.requestId);
+        return;
+      }
+      if (message.type === "fetchRequest") {
+        await this.handleFetch(message);
+        return;
+      }
+      if (message.type === "getExtensionSettings") {
+        this.postMessage({
+          type: "extensionSettingsResult",
+          requestId: message.requestId,
+          value: this.getExtensionSettings()
+        });
+        return;
+      }
+      if (message.type === "setExtensionSetting") {
+        try {
+          const value = await this.setExtensionSetting(message.key, message.value);
+          this.postMessage({
+            type: "extensionSettingResult",
+            requestId: message.requestId,
+            value
+          });
+        } catch (error) {
+          const text = error instanceof Error ? error.message : String(error);
+          this.postMessage({
+            type: "extensionSettingResult",
+            requestId: message.requestId,
+            value: null,
+            error: text
+          });
+        }
+        return;
+      }
+      if (message.type === "restartServer") {
+        try {
+          await vscode4.commands.executeCommand("opencodeVisual.restartServer");
+          this.postMessage({
+            type: "restartServerResult",
+            requestId: message.requestId
+          });
+        } catch (error) {
+          const text = error instanceof Error ? error.message : String(error);
+          this.postMessage({
+            type: "restartServerResult",
+            requestId: message.requestId,
+            error: text
+          });
+        }
+        return;
+      }
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      void vscode4.window.showErrorMessage(messageText);
+    }
+  }
+  async render() {
+    const panel = this.panel;
+    if (!panel) {
+      return;
+    }
+    this.ready = false;
+    let disableHealthCheck = false;
+    let serverUrl = this.service.getResolvedServerBaseUrl();
+    try {
+      serverUrl = await this.service.ensureServerReady();
+      disableHealthCheck = await this.shouldDisableHealthCheck(serverUrl);
+    } catch {
+      disableHealthCheck = true;
+      serverUrl = this.service.getResolvedServerBaseUrl();
+    }
+    const workspaceDirectory = this.service.getWorkspaceContext().directory ?? null;
+    if (this.panel !== panel) {
+      return;
+    }
+    try {
+      panel.webview.html = getWebviewHtml(panel.webview, this.context.extensionUri, {
+        serverUrl,
+        version: String(this.context.extension.packageJSON.version ?? "0.0.0"),
+        workspaceDirectory,
+        colorScheme: this.getColorScheme(),
+        disableHealthCheck,
+        settingsMode: true,
+        nativeSettings: this.getNativeSettings()
+      });
+    } catch (error) {
+      if (this.isDisposedError(error)) {
+        this.resetDisposedPanel();
+        return;
+      }
+      throw error;
+    }
+  }
+  getNativeSettings() {
+    const config = vscode4.workspace.getConfiguration("opencodeVisual");
+    return {
+      language: config.get("language", "auto"),
+      uiColorScheme: config.get("uiColorScheme", "system"),
+      themeId: config.get("themeId", "oc-2"),
+      uiFont: config.get("uiFont", ""),
+      codeFont: config.get("codeFont", ""),
+      autoSave: config.get("autoSave", true),
+      fontSize: config.get("fontSize", 14),
+      showReasoningSummaries: config.get("showReasoningSummaries", false),
+      shellToolPartsExpanded: config.get("shellToolPartsExpanded", false),
+      editToolPartsExpanded: config.get("editToolPartsExpanded", false),
+      releaseNotes: config.get("releaseNotes", true),
+      checkUpdatesOnStartup: config.get("checkUpdatesOnStartup", true),
+      notifyAgent: config.get("notifyAgent", true),
+      notifyPermissions: config.get("notifyPermissions", true),
+      notifyErrors: config.get("notifyErrors", false),
+      soundAgentEnabled: config.get("soundAgentEnabled", true),
+      soundAgent: config.get("soundAgent", "staplebops-01"),
+      soundPermissionsEnabled: config.get("soundPermissionsEnabled", true),
+      soundPermissions: config.get("soundPermissions", "staplebops-02"),
+      soundErrorsEnabled: config.get("soundErrorsEnabled", true),
+      soundErrors: config.get("soundErrors", "nope-03"),
+      autoAcceptWorkspacePermissions: config.get("autoAcceptWorkspacePermissions", false),
+      customKeybinds: config.get("customKeybinds", null),
+      modelVisibility: config.get("modelVisibility", null)
+    };
+  }
+  getExtensionSettings() {
+    const config = vscode4.workspace.getConfiguration("opencodeVisual");
+    return {
+      opencodePath: config.get("opencodePath", "opencode"),
+      serverBaseUrl: config.get("serverBaseUrl", "http://127.0.0.1:4096"),
+      autoStartServer: config.get("autoStartServer", true),
+      debugServerLogs: config.get("debugServerLogs", false)
+    };
+  }
+  async setExtensionSetting(key, value) {
+    const config = vscode4.workspace.getConfiguration("opencodeVisual");
+    if ((key === "opencodePath" || key === "serverBaseUrl") && typeof value !== "string") {
+      throw new Error(`Invalid value for ${key}`);
+    }
+    if ((key === "autoStartServer" || key === "debugServerLogs") && typeof value !== "boolean") {
+      throw new Error(`Invalid value for ${key}`);
+    }
+    await config.update(key, value, vscode4.ConfigurationTarget.Global);
+    return this.getExtensionSettings();
+  }
+  async shouldDisableHealthCheck(serverUrl) {
+    let target;
+    try {
+      target = new URL("/global/health", serverUrl).toString();
+    } catch {
+      return true;
+    }
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), 2500);
+    try {
+      const response = await fetch(target, {
+        method: "GET",
+        signal: abort.signal
+      });
+      if (response.status === 404 || response.status === 405 || response.status === 501) {
+        return true;
+      }
+      if (response.ok) {
+        return false;
+      }
+      const text = await response.text().catch(() => "");
+      if (/not found|unknown route|cannot\s+\w+\s+\/global\/health/i.test(text)) {
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  getColorScheme() {
+    const kind = vscode4.window.activeColorTheme.kind;
+    if (kind === vscode4.ColorThemeKind.Light || kind === vscode4.ColorThemeKind.HighContrastLight) {
+      return "light";
+    }
+    return "dark";
+  }
+  async openDiff(filePath, before, after) {
+    const left = await vscode4.workspace.openTextDocument({ content: before });
+    const right = await vscode4.workspace.openTextDocument({ content: after });
+    const title = `OpenCode Diff: ${filePath}`;
+    await vscode4.commands.executeCommand("vscode.diff", left.uri, right.uri, title, { preview: false });
+  }
+  dispatchAction(action) {
+    this.postMessage({
+      type: "hostAction",
+      action
+    });
+  }
+  postMessage(message) {
+    const panel = this.panel;
+    if (!this.ready || !panel) {
+      this.pendingMessages.push(message);
+      return;
+    }
+    this.sendMessage(panel, message);
+  }
+  flushMessages() {
+    while (this.ready && this.panel && this.pendingMessages.length > 0) {
+      const message = this.pendingMessages.shift();
+      if (!message) {
+        return;
+      }
+      const panel = this.panel;
+      if (!panel) {
+        return;
+      }
+      this.sendMessage(panel, message);
+    }
+  }
+  sendMessage(panel, message) {
+    try {
+      void panel.webview.postMessage(message).then(void 0, (error) => {
+        if (this.isDisposedError(error)) {
+          this.resetDisposedPanel();
+          return;
+        }
+        const text = error instanceof Error ? error.message : String(error);
+        void vscode4.window.showErrorMessage(text);
+      });
+    } catch (error) {
+      if (this.isDisposedError(error)) {
+        this.resetDisposedPanel();
+      }
+    }
+  }
+  resolveFetchUrl(input) {
+    try {
+      const url = new URL(input);
+      if (url.hostname === "opencode.localhost") {
+        const base = this.service.getResolvedServerBaseUrl();
+        try {
+          const target = new URL(base);
+          url.protocol = target.protocol;
+          url.hostname = target.hostname;
+          url.port = target.port;
+        } catch {
+          url.hostname = "127.0.0.1";
+        }
+      }
+      return url.toString();
+    } catch {
+      return input;
+    }
+  }
+  isLocalHostname(hostname) {
+    const normalized = hostname.toLowerCase();
+    return normalized === "opencode.localhost" || normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
+  }
+  buildFetchCandidates(input) {
+    const primary = this.resolveFetchUrl(input);
+    try {
+      const url = new URL(primary);
+      if (!this.isLocalHostname(url.hostname)) {
+        return [primary];
+      }
+      const candidates = [url.toString()];
+      for (const host of ["127.0.0.1", "localhost", "[::1]"]) {
+        const candidate = new URL(url.toString());
+        candidate.hostname = host;
+        const value = candidate.toString();
+        if (!candidates.includes(value)) {
+          candidates.push(value);
+        }
+      }
+      return candidates;
+    } catch {
+      return [primary];
+    }
+  }
+  isNetworkFailure(error) {
+    const text = error instanceof Error ? error.message : String(error);
+    return /econnrefused|econnreset|econnaborted|fetch failed|timed out|enotfound|eai_again|socket|network error/i.test(text);
+  }
+  async handleFetch(message) {
+    const abort = new AbortController();
+    this.fetches.set(message.requestId, abort);
+    try {
+      let response;
+      let finalUrl = this.resolveFetchUrl(message.url);
+      let lastError;
+      for (const candidateUrl of this.buildFetchCandidates(message.url)) {
+        finalUrl = candidateUrl;
+        try {
+          response = await fetch(candidateUrl, {
+            method: message.method,
+            headers: message.headers,
+            body: message.body ? Buffer.from(message.body, "base64") : void 0,
+            signal: abort.signal
+          });
+          break;
+        } catch (error) {
+          lastError = error;
+          if (abort.signal.aborted || !this.isNetworkFailure(error)) {
+            throw error;
+          }
+        }
+      }
+      if (!response) {
+        throw lastError ?? new Error(`Failed to fetch ${finalUrl}`);
+      }
+      this.postMessage({
+        type: "fetchResponse",
+        requestId: message.requestId,
+        url: response.url,
+        status: response.status,
+        statusText: response.statusText,
+        headers: [...response.headers.entries()]
+      });
+      const reader = response.body?.getReader();
+      if (!reader) {
+        this.postMessage({ type: "fetchEnd", requestId: message.requestId });
+        return;
+      }
+      while (true) {
+        const result = await reader.read();
+        if (result.done) {
+          break;
+        }
+        this.postMessage({
+          type: "fetchChunk",
+          requestId: message.requestId,
+          chunk: Buffer.from(result.value).toString("base64")
+        });
+      }
+      this.postMessage({ type: "fetchEnd", requestId: message.requestId });
+    } catch (error) {
+      if (!abort.signal.aborted) {
+        const messageText = error instanceof Error ? error.message : String(error);
+        const errorName = error instanceof Error ? error.name : void 0;
+        this.postMessage({
+          type: "fetchError",
+          requestId: message.requestId,
+          message: messageText,
+          name: errorName
+        });
+        const urls = this.buildFetchCandidates(message.url);
+        const detail = `method=${message.method} urls=${urls.join(",")} error=${errorName ?? "Error"}: ${messageText}`;
+        this.service.reportNetworkIssue(detail);
+      }
+    } finally {
+      this.fetches.delete(message.requestId);
+    }
+  }
+};
+
 // src/extension.ts
 async function activate(context) {
   const service = new OpenCodeService(context);
   const provider = new OpenCodeSidebarProvider(context, service);
+  const settingsPanel = new OpenCodeSettingsPanel(context, service);
   const syncWorkspace = (reloadOnChange) => {
     void service.syncWorkspaceContext().then(async (changed) => {
       if (!reloadOnChange || !changed) {
@@ -7853,50 +8689,55 @@ async function activate(context) {
     }).catch(() => {
     });
   };
-  context.subscriptions.push(service, provider);
+  context.subscriptions.push(service, provider, settingsPanel);
   context.subscriptions.push(
-    vscode4.window.registerWebviewViewProvider(OpenCodeSidebarProvider.viewId, provider, {
+    vscode5.window.registerWebviewViewProvider(OpenCodeSidebarProvider.viewId, provider, {
       webviewOptions: {
         retainContextWhenHidden: true
       }
     })
   );
   context.subscriptions.push(
-    vscode4.window.onDidChangeActiveTextEditor(() => {
+    vscode5.window.onDidChangeActiveTextEditor(() => {
       syncWorkspace(false);
     }),
-    vscode4.workspace.onDidChangeWorkspaceFolders(() => {
+    vscode5.workspace.onDidChangeWorkspaceFolders(() => {
       syncWorkspace(true);
     }),
-    vscode4.window.onDidChangeVisibleTextEditors(() => {
+    vscode5.workspace.onDidChangeConfiguration((event) => {
+      if (!event.affectsConfiguration("opencodeVisual")) {
+        return;
+      }
+      void provider.reload();
+      void settingsPanel.reload();
+    }),
+    vscode5.window.onDidChangeVisibleTextEditors(() => {
       syncWorkspace(false);
     }),
-    vscode4.window.onDidChangeActiveColorTheme(() => {
+    vscode5.window.onDidChangeActiveColorTheme(() => {
       provider.notifyTheme();
+      settingsPanel.notifyTheme();
     })
   );
   context.subscriptions.push(
-    vscode4.commands.registerCommand("opencodeVisual.focus", async () => {
+    vscode5.commands.registerCommand("opencodeVisual.focus", async () => {
       await provider.reveal();
     }),
-    vscode4.commands.registerCommand("opencodeVisual.newSession", async () => {
+    vscode5.commands.registerCommand("opencodeVisual.newSession", async () => {
       await provider.reveal();
       provider.dispatchAction("newSession");
     }),
-    vscode4.commands.registerCommand("opencodeVisual.refresh", async () => {
+    vscode5.commands.registerCommand("opencodeVisual.refresh", async () => {
       await provider.reload();
       await provider.reveal();
     }),
-    vscode4.commands.registerCommand("opencodeVisual.openSettings", async () => {
-      await vscode4.commands.executeCommand(
-        "workbench.action.openSettings",
-        "@ext:rodrigomart123.opencode-for-vscode opencodeVisual"
-      );
+    vscode5.commands.registerCommand("opencodeVisual.openSettings", async () => {
+      await settingsPanel.open();
     }),
-    vscode4.commands.registerCommand("opencodeVisual.restartServer", async () => {
+    vscode5.commands.registerCommand("opencodeVisual.restartServer", async () => {
       await service.ensureServerReady(true);
       await provider.reload();
-      await provider.reveal();
+      await settingsPanel.reload();
     })
   );
   void service.ensureServerReady().catch(() => {

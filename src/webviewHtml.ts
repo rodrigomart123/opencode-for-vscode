@@ -10,23 +10,205 @@ function createNonce() {
 }
 
 const themePreload = `;(function () {
-  var key = "opencode-theme-id"
-  var themeId = localStorage.getItem(key) || "oc-2"
+  function setItem(key, value) {
+    try {
+      localStorage.setItem(key, value)
+    } catch {}
+  }
 
-  var cfg = window.__OPENCODE_VSCODE_CONFIG__
+  function getItem(key) {
+    try {
+      return localStorage.getItem(key)
+    } catch {
+      return null
+    }
+  }
+
+  function removeItem(key) {
+    try {
+      localStorage.removeItem(key)
+    } catch {}
+  }
+
+  function ensureObject(value) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value
+    }
+    return {}
+  }
+
+  function readJson(key, fallback) {
+    try {
+      var raw = getItem(key)
+      if (!raw) return fallback
+      var parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed
+      }
+      return fallback
+    } catch {
+      return fallback
+    }
+  }
+
+  function writeJson(key, value) {
+    try {
+      setItem(key, JSON.stringify(value))
+    } catch {}
+  }
+
+  function base64UrlEncode(value) {
+    try {
+      var bytes = new TextEncoder().encode(value)
+      var binary = ""
+      for (var index = 0; index < bytes.length; index += 1) {
+        binary += String.fromCharCode(bytes[index])
+      }
+      return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
+    } catch {
+      return ""
+    }
+  }
+
+  var cfg = window.__OPENCODE_VSCODE_CONFIG__ || {}
+  var nativeSettings = cfg.nativeSettings && typeof cfg.nativeSettings === "object" ? cfg.nativeSettings : null
+  var hasNativeScheme = false
+
+  if (nativeSettings) {
+    if (typeof nativeSettings.themeId === "string" && nativeSettings.themeId) {
+      setItem("opencode-theme-id", nativeSettings.themeId)
+    }
+
+    if (
+      nativeSettings.uiColorScheme === "system" ||
+      nativeSettings.uiColorScheme === "light" ||
+      nativeSettings.uiColorScheme === "dark"
+    ) {
+      setItem("opencode-color-scheme", nativeSettings.uiColorScheme)
+      hasNativeScheme = true
+    }
+
+    if (nativeSettings.language === "auto") {
+      removeItem("opencode.global.dat:language")
+    } else if (typeof nativeSettings.language === "string" && nativeSettings.language) {
+      writeJson("opencode.global.dat:language", { locale: nativeSettings.language })
+    }
+
+    var settings = ensureObject(readJson("settings.v3", {}))
+    settings.general = ensureObject(settings.general)
+    settings.updates = ensureObject(settings.updates)
+    settings.appearance = ensureObject(settings.appearance)
+    settings.notifications = ensureObject(settings.notifications)
+    settings.sounds = ensureObject(settings.sounds)
+
+    settings.general.showReasoningSummaries = !!nativeSettings.showReasoningSummaries
+    settings.general.shellToolPartsExpanded = !!nativeSettings.shellToolPartsExpanded
+    settings.general.editToolPartsExpanded = !!nativeSettings.editToolPartsExpanded
+    settings.general.autoSave = nativeSettings.autoSave !== false
+    settings.general.releaseNotes = nativeSettings.releaseNotes !== false
+    settings.updates.startup = nativeSettings.checkUpdatesOnStartup !== false
+    settings.appearance.sans = typeof nativeSettings.uiFont === "string" ? nativeSettings.uiFont : ""
+    settings.appearance.mono = typeof nativeSettings.codeFont === "string" ? nativeSettings.codeFont : ""
+    settings.appearance.fontSize =
+      typeof nativeSettings.fontSize === "number" && Number.isFinite(nativeSettings.fontSize)
+        ? Math.max(10, Math.min(28, nativeSettings.fontSize))
+        : 14
+
+    settings.notifications.agent = nativeSettings.notifyAgent !== false
+    settings.notifications.permissions = nativeSettings.notifyPermissions !== false
+    settings.notifications.errors = !!nativeSettings.notifyErrors
+
+    settings.sounds.agentEnabled = nativeSettings.soundAgentEnabled !== false
+    settings.sounds.agent =
+      typeof nativeSettings.soundAgent === "string" && nativeSettings.soundAgent
+        ? nativeSettings.soundAgent
+        : "staplebops-01"
+    settings.sounds.permissionsEnabled = nativeSettings.soundPermissionsEnabled !== false
+    settings.sounds.permissions =
+      typeof nativeSettings.soundPermissions === "string" && nativeSettings.soundPermissions
+        ? nativeSettings.soundPermissions
+        : "staplebops-02"
+    settings.sounds.errorsEnabled = nativeSettings.soundErrorsEnabled !== false
+    settings.sounds.errors =
+      typeof nativeSettings.soundErrors === "string" && nativeSettings.soundErrors
+        ? nativeSettings.soundErrors
+        : "nope-03"
+
+    if (
+      nativeSettings.customKeybinds &&
+      typeof nativeSettings.customKeybinds === "object" &&
+      !Array.isArray(nativeSettings.customKeybinds)
+    ) {
+      var keybinds = {}
+      for (var keybindId in nativeSettings.customKeybinds) {
+        if (!Object.prototype.hasOwnProperty.call(nativeSettings.customKeybinds, keybindId)) continue
+        var keybindValue = nativeSettings.customKeybinds[keybindId]
+        if (typeof keybindValue !== "string") continue
+        keybinds[keybindId] = keybindValue
+      }
+      settings.keybinds = keybinds
+    }
+
+    writeJson("settings.v3", settings)
+
+    if (
+      nativeSettings.modelVisibility &&
+      typeof nativeSettings.modelVisibility === "object" &&
+      !Array.isArray(nativeSettings.modelVisibility)
+    ) {
+      var modelStore = ensureObject(readJson("opencode.global.dat:model", {}))
+      var recent = Array.isArray(modelStore.recent) ? modelStore.recent : []
+      var variant = ensureObject(modelStore.variant)
+      var user = []
+      for (var modelKey in nativeSettings.modelVisibility) {
+        if (!Object.prototype.hasOwnProperty.call(nativeSettings.modelVisibility, modelKey)) continue
+        var visibility = nativeSettings.modelVisibility[modelKey]
+        if (visibility !== "show" && visibility !== "hide") continue
+        var slash = modelKey.indexOf("/")
+        if (slash <= 0 || slash >= modelKey.length - 1) continue
+        user.push({
+          providerID: modelKey.slice(0, slash),
+          modelID: modelKey.slice(slash + 1),
+          visibility: visibility,
+        })
+      }
+      modelStore.user = user
+      modelStore.recent = recent
+      modelStore.variant = variant
+      writeJson("opencode.global.dat:model", modelStore)
+    }
+
+    if (
+      typeof nativeSettings.autoAcceptWorkspacePermissions === "boolean" &&
+      typeof cfg.workspaceDirectory === "string" &&
+      cfg.workspaceDirectory
+    ) {
+      var permissionStore = ensureObject(readJson("opencode.global.dat:permission", {}))
+      permissionStore.autoAccept = ensureObject(permissionStore.autoAccept)
+      var key = base64UrlEncode(cfg.workspaceDirectory) + "/*"
+      if (key) {
+        permissionStore.autoAccept[key] = nativeSettings.autoAcceptWorkspacePermissions
+        writeJson("opencode.global.dat:permission", permissionStore)
+      }
+    }
+  }
+
+  var key = "opencode-theme-id"
+  var themeId = getItem(key) || "oc-2"
+
   var hostScheme = cfg && (cfg.colorScheme === "dark" || cfg.colorScheme === "light") ? cfg.colorScheme : null
-  if (hostScheme) {
-    localStorage.setItem("opencode-color-scheme", hostScheme)
+  if (hostScheme && !hasNativeScheme) {
+    setItem("opencode-color-scheme", hostScheme)
   }
 
   if (themeId === "oc-1") {
     themeId = "oc-2"
-    localStorage.setItem(key, themeId)
-    localStorage.removeItem("opencode-theme-css-light")
-    localStorage.removeItem("opencode-theme-css-dark")
+    setItem(key, themeId)
+    removeItem("opencode-theme-css-light")
+    removeItem("opencode-theme-css-dark")
   }
 
-  var scheme = hostScheme || localStorage.getItem("opencode-color-scheme") || "system"
+  var scheme = getItem("opencode-color-scheme") || hostScheme || "system"
   var isDark = scheme === "dark" || (scheme === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
   var mode = isDark ? "dark" : "light"
 
@@ -35,7 +217,7 @@ const themePreload = `;(function () {
 
   if (themeId === "oc-2") return
 
-  var css = localStorage.getItem("opencode-theme-css-" + mode)
+  var css = getItem("opencode-theme-css-" + mode)
   if (css) {
     var style = document.createElement("style")
     style.id = "oc-theme-preload"
@@ -60,11 +242,41 @@ export function getWebviewHtml(
     workspaceDirectory: string | null;
     colorScheme: "light" | "dark";
     disableHealthCheck: boolean;
+    settingsMode?: boolean;
+    nativeSettings?: Record<string, unknown>;
   },
 ) {
   const nonce = createNonce();
   const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "app", "app.js"));
   const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "app", "app.css"));
+  const settingsBootStyle = config.settingsMode
+    ? `<style nonce="${nonce}">
+    #root[data-settings-ready="false"] {
+      opacity: 0;
+    }
+
+    #root[data-settings-ready="true"] {
+      opacity: 1;
+    }
+
+    [data-tauri-drag-region],
+    [data-component="sidebar-nav-desktop"],
+    [data-component="sidebar-nav-mobile"],
+    [data-component="sidebar-rail"] {
+      display: none !important;
+    }
+
+    [data-component="dialog-overlay"] {
+      display: none !important;
+      pointer-events: none !important;
+    }
+
+    [data-component="dialog"][data-transition] [data-slot="dialog-content"] {
+      animation: none !important;
+      transition: none !important;
+    }
+  </style>`
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="en" style="background-color: var(--background-base)">
@@ -76,6 +288,7 @@ export function getWebviewHtml(
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link href="${styleUri}" rel="stylesheet" />
+    ${settingsBootStyle}
     <script nonce="${nonce}">window.__OPENCODE_VSCODE_CONFIG__ = ${JSON.stringify(config)};</script>
     <script nonce="${nonce}">${themePreload}</script>
     <title>OpenCode</title>

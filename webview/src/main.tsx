@@ -4,7 +4,7 @@ import { MemoryRouter, useNavigate } from "@solidjs/router";
 import { base64Encode } from "@opencode-ai/util/encode";
 import { AppBaseProviders, AppInterface } from "@/app";
 import { useCommand } from "@/context/command";
-import { type Platform, PlatformProvider } from "@/context/platform";
+import { type ExtensionSettingKey, type ExtensionSettings, type Platform, PlatformProvider } from "@/context/platform";
 import { ServerConnection } from "@/context/server";
 import { useTheme } from "@opencode-ai/ui/theme/context";
 import type { HostAction, HostToWebviewMessage, WebviewToHostMessage } from "../../src/webviewProtocol";
@@ -17,6 +17,7 @@ declare global {
       workspaceDirectory: string | null;
       colorScheme: "light" | "dark";
       disableHealthCheck?: boolean;
+      settingsMode?: boolean;
     };
     acquireVsCodeApi?: () => {
       postMessage: (message: WebviewToHostMessage) => void;
@@ -28,6 +29,7 @@ const root = document.getElementById("root");
 if (!(root instanceof HTMLElement)) {
   throw new Error("OpenCode webview root not found.");
 }
+const rootEl = root;
 
 const cfg = window.__OPENCODE_VSCODE_CONFIG__;
 if (!cfg || !cfg.serverUrl) {
@@ -47,10 +49,24 @@ const requests = new Map<string, {
   responded: boolean;
   timeout?: ReturnType<typeof setTimeout>;
 }>();
+const extensionRequests = new Map<string, {
+  resolve: (value: ExtensionSettings | null) => void;
+  reject: (reason?: unknown) => void;
+  timeout?: ReturnType<typeof setTimeout>;
+}>();
+const restartRequests = new Map<string, {
+  resolve: () => void;
+  reject: (reason?: unknown) => void;
+  timeout?: ReturnType<typeof setTimeout>;
+}>();
 const hostActionListeners = new Set<(action: HostAction) => void>();
+const pendingHostActions: HostAction[] = [];
 let hostMessageBridgeStarted = false;
 const [hostScheme, setHostScheme] = createSignal<"light" | "dark">(config.colorScheme);
 const FETCH_HEADER_TIMEOUT_MS = 20000;
+const EXTENSION_SETTINGS_TIMEOUT_MS = 10000;
+const settingsMode = Boolean(config.settingsMode);
+const SETTINGS_MODE_STYLE_ID = "opencode-settings-mode-style";
 
 function requestId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -212,7 +228,99 @@ function handleHostMessage(message: HostToWebviewMessage) {
     return true;
   }
 
+  if (message.type === "extensionSettingsResult" || message.type === "extensionSettingResult") {
+    const request = extensionRequests.get(message.requestId);
+    if (!request) return true;
+
+    if (request.timeout) {
+      clearTimeout(request.timeout);
+      request.timeout = undefined;
+    }
+
+    extensionRequests.delete(message.requestId);
+    if (message.error) {
+      request.reject(new Error(message.error));
+      return true;
+    }
+
+    request.resolve(message.value);
+    return true;
+  }
+
+  if (message.type === "restartServerResult") {
+    const request = restartRequests.get(message.requestId);
+    if (!request) return true;
+
+    if (request.timeout) {
+      clearTimeout(request.timeout);
+      request.timeout = undefined;
+    }
+
+    restartRequests.delete(message.requestId);
+    if (message.error) {
+      request.reject(new Error(message.error));
+      return true;
+    }
+
+    request.resolve();
+    return true;
+  }
+
   return false;
+}
+
+function extensionRequest(message: Extract<WebviewToHostMessage, {
+  type: "getExtensionSettings";
+} | {
+  type: "setExtensionSetting";
+}>) {
+  if (!vscode) {
+    return Promise.resolve<ExtensionSettings | null>(null);
+  }
+
+  return new Promise<ExtensionSettings | null>((resolve, reject) => {
+    const request = {
+      resolve,
+      reject,
+      timeout: setTimeout(() => {
+        const current = extensionRequests.get(message.requestId);
+        if (!current) {
+          return;
+        }
+
+        extensionRequests.delete(message.requestId);
+        current.reject(new Error("Timed out while waiting for extension settings response."));
+      }, EXTENSION_SETTINGS_TIMEOUT_MS),
+    };
+
+    extensionRequests.set(message.requestId, request);
+    vscode.postMessage(message);
+  });
+}
+
+function restartRequest(message: Extract<WebviewToHostMessage, { type: "restartServer" }>) {
+  if (!vscode) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const request = {
+      resolve,
+      reject,
+      timeout: setTimeout(() => {
+        const current = restartRequests.get(message.requestId);
+        if (!current) {
+          return;
+        }
+
+        restartRequests.delete(message.requestId);
+        current.reject(new Error("Timed out while waiting for server restart response."));
+      }, EXTENSION_SETTINGS_TIMEOUT_MS),
+    };
+
+    restartRequests.set(message.requestId, request);
+    vscode.postMessage(message);
+  });
 }
 
 function startHostMessageBridge() {
@@ -227,6 +335,11 @@ function startHostMessageBridge() {
     }
 
     if (event.data?.type !== "hostAction") {
+      return;
+    }
+
+    if (hostActionListeners.size === 0) {
+      pendingHostActions.push(event.data.action);
       return;
     }
 
@@ -541,7 +654,27 @@ const platform: Platform = {
   setDefaultServer(url) {
     writeStorage(DEFAULT_SERVER_URL_KEY, url ? aliasServerUrl(url) : null);
   },
+  getExtensionSettings: async () => {
+    const id = requestId();
+    return extensionRequest({ type: "getExtensionSettings", requestId: id });
+  },
+  setExtensionSetting: async (key: ExtensionSettingKey, value: string | boolean) => {
+    const id = requestId();
+    return extensionRequest({ type: "setExtensionSetting", requestId: id, key, value });
+  },
+  restartServerProcess: async () => {
+    const id = requestId();
+    return restartRequest({ type: "restartServer", requestId: id });
+  },
 };
+
+if (!settingsMode) {
+  platform.openSettings = () => {
+    if (!vscode) return Promise.resolve();
+    vscode.postMessage({ type: "openSettings" });
+    return Promise.resolve();
+  };
+}
 
 startHostMessageBridge();
 
@@ -550,12 +683,201 @@ function HostBridge() {
   const navigate = useNavigate();
   let dead = false;
   let booted = false;
+  let opening = false;
+
+  const openSettingsDialog = () => {
+    command.trigger("settings.open", "palette");
+  };
+
+  const setSettingsReady = (ready: boolean) => {
+    if (!settingsMode) {
+      return;
+    }
+
+    rootEl.dataset.settingsReady = ready ? "true" : "false";
+  };
+
+  const applySettingsModeStyle = () => {
+    const existing = document.getElementById(SETTINGS_MODE_STYLE_ID);
+    if (existing) {
+      return existing;
+    }
+
+    const style = document.createElement("style");
+    style.id = SETTINGS_MODE_STYLE_ID;
+    style.textContent = `
+[data-tauri-drag-region] { display: none !important; }
+[data-component='sidebar-nav-desktop'],
+[data-component='sidebar-nav-mobile'],
+[data-component='sidebar-rail'] { display: none !important; }
+`;
+    document.head.appendChild(style);
+    return style;
+  };
+
+  const insideDialogContent = (target: EventTarget | null) => {
+    if (!(target instanceof Node)) {
+      return false;
+    }
+
+    const element = target instanceof Element ? target : target.parentElement;
+    if (!(element instanceof Element)) {
+      return false;
+    }
+
+    return Boolean(element.closest("[data-slot='dialog-content']"));
+  };
+
+  const lockSettingsDialog = () => {
+    const settings = document.querySelector(".settings-dialog");
+    if (!(settings instanceof HTMLElement)) {
+      setSettingsReady(false);
+      return false;
+    }
+
+    settings.style.height = "100%";
+    settings.style.maxHeight = "100%";
+
+    const content = settings.closest("[data-slot='dialog-content']");
+    if (!(content instanceof HTMLElement)) {
+      setSettingsReady(false);
+      return false;
+    }
+
+    content.style.width = "100vw";
+    content.style.height = "100vh";
+    content.style.minHeight = "100vh";
+    content.style.maxHeight = "100vh";
+    content.style.borderRadius = "0";
+
+    const body = content.querySelector("[data-slot='dialog-body']");
+    if (body instanceof HTMLElement) {
+      body.style.height = "100%";
+      body.style.maxHeight = "100%";
+    }
+
+    const container = content.closest("[data-slot='dialog-container']");
+    if (container instanceof HTMLElement) {
+      container.style.width = "100vw";
+      container.style.height = "100vh";
+      container.style.maxWidth = "100vw";
+      container.style.maxHeight = "100vh";
+    }
+
+    const close = content.querySelector("[data-slot='dialog-close-button']");
+    if (close instanceof HTMLElement) {
+      close.style.display = "none";
+    }
+
+    const dialog = settings.closest("[data-component='dialog']");
+    if (!(dialog instanceof HTMLElement)) {
+      setSettingsReady(false);
+      return false;
+    }
+
+    dialog.style.alignItems = "stretch";
+    dialog.style.justifyContent = "stretch";
+    dialog.style.pointerEvents = "auto";
+
+    const overlay = dialog.previousElementSibling;
+    if (overlay instanceof HTMLElement && overlay.getAttribute("data-component") === "dialog-overlay") {
+      overlay.style.pointerEvents = "none";
+    }
+
+    setSettingsReady(true);
+    return true;
+  };
+
+  const showSettingsDialog = () => {
+    if (!settingsMode) {
+      return;
+    }
+
+    if (lockSettingsDialog()) {
+      return;
+    }
+
+    if (opening) {
+      return;
+    }
+
+    opening = true;
+    openSettingsDialog();
+    window.setTimeout(() => {
+      opening = false;
+      lockSettingsDialog();
+    }, 120);
+  };
 
   onCleanup(() => {
     dead = true;
   });
 
   onMount(() => {
+    if (settingsMode) {
+      setSettingsReady(false);
+      const style = applySettingsModeStyle();
+      setTimeout(() => {
+        showSettingsDialog();
+      }, 0);
+
+      const observer = new MutationObserver(() => {
+        showSettingsDialog();
+      });
+
+      const root = document.body;
+      if (root) {
+        observer.observe(root, {
+          childList: true,
+          subtree: true,
+        });
+      }
+
+      const blockEscape = (event: KeyboardEvent) => {
+        if (event.key !== "Escape") {
+          return;
+        }
+
+        const settings = document.querySelector(".settings-dialog");
+        if (!(settings instanceof HTMLElement)) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      };
+
+      const blockOutside = (event: Event) => {
+        const settings = document.querySelector(".settings-dialog");
+        if (!(settings instanceof HTMLElement)) {
+          return;
+        }
+
+        if (insideDialogContent(event.target)) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      };
+
+      window.addEventListener("keydown", blockEscape, true);
+      window.addEventListener("pointerdown", blockOutside, true);
+      window.addEventListener("mousedown", blockOutside, true);
+      window.addEventListener("click", blockOutside, true);
+      onCleanup(() => {
+        observer.disconnect();
+        window.removeEventListener("keydown", blockEscape, true);
+        window.removeEventListener("pointerdown", blockOutside, true);
+        window.removeEventListener("mousedown", blockOutside, true);
+        window.removeEventListener("click", blockOutside, true);
+        if (style.parentNode) {
+          style.parentNode.removeChild(style);
+        }
+      });
+      return;
+    }
+
     if (booted) return;
     booted = true;
 
@@ -575,7 +897,12 @@ function HostBridge() {
     }
 
     if (action === "openSettings") {
-      command.trigger("settings.open", "palette");
+      if (settingsMode) {
+        showSettingsDialog();
+        return;
+      }
+
+      void platform.openSettings?.();
       return;
     }
 
@@ -590,6 +917,13 @@ function HostBridge() {
     };
 
     hostActionListeners.add(listener);
+    while (pendingHostActions.length > 0) {
+      const action = pendingHostActions.shift();
+      if (!action) {
+        continue;
+      }
+      listener(action);
+    }
     onCleanup(() => hostActionListeners.delete(listener));
   });
 

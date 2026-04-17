@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.7 - 2026-04-17
+
+- Restored OpenCode settings to a dedicated VS Code webview tab instead of opening native VS Code settings, with full-screen settings mode and smoother startup rendering.
+- Added a new Extension settings tab in OpenCode for `opencodePath`, `serverBaseUrl`, `autoStartServer`, and `debugServerLogs`, including host-backed save/reload sync.
+- Added explicit host restart acknowledgements so server restart actions now report success or failure accurately in the settings UI.
+
+## 0.1.6 - 2026-04-16
+
+- Switched tool-row diffs to a readonly `opencode-diff` virtual document provider so closing quick-opened diffs no longer triggers save prompts.
+- Replaced sidebar settings entry with native VS Code Settings opening (extension-scoped search), removing the custom OpenCode settings page flow.
+
 ## 0.1.5 - 2026-04-16
 
 - Added host-bridged `openDiff` action wiring from webview tool rows (`edit`, `write`, `apply_patch`) so diff requests can route to VS Code.
