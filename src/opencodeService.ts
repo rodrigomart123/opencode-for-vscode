@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
@@ -154,6 +154,9 @@ export class OpenCodeService implements vscode.Disposable {
 
     const settings = this.getSettings();
     const baseUrl = settings.serverBaseUrl;
+    if (settings.autoStartServer) {
+      await this.cleanupStaleManagedServerForBaseUrl(baseUrl);
+    }
     this.connectionState = {
       status: "connecting",
       baseUrl,
@@ -817,13 +820,16 @@ export class OpenCodeService implements vscode.Disposable {
 
     this.stopStream();
     this.currentDirectory = directory;
-    const baseUrl = this.getSettings().serverBaseUrl;
+    const settings = this.getSettings();
+    const baseUrl = settings.serverBaseUrl;
+    if (settings.autoStartServer) {
+      await this.cleanupStaleManagedServerForBaseUrl(baseUrl);
+    }
 
     try {
       this.client = this.createClient(baseUrl, directory);
       await this.client.path.get(REQUEST_OPTIONS);
     } catch (error) {
-      const settings = this.getSettings();
       if (!settings.autoStartServer) {
         this.connectionState = {
           status: "error",
@@ -1591,6 +1597,7 @@ export class OpenCodeService implements vscode.Disposable {
     const settings = this.getSettings();
     const targetUrl = new URL(settings.serverBaseUrl);
     const preferredPort = Number(targetUrl.port || (targetUrl.protocol === "https:" ? 443 : 80));
+    await this.cleanupStaleManagedServer(targetUrl.hostname, preferredPort);
 
     try {
       return await this.spawnManagedServer(targetUrl.hostname, preferredPort, settings);
@@ -1719,16 +1726,77 @@ export class OpenCodeService implements vscode.Disposable {
     }
 
     if (process.platform === "win32" && proc.pid) {
-      spawn("taskkill", ["/pid", String(proc.pid), "/T", "/F"], {
+      const result = spawnSync("taskkill", ["/pid", String(proc.pid), "/T", "/F"], {
         windowsHide: true,
         stdio: "ignore",
-      }).on("error", () => {
-        proc.kill();
       });
+      if (result.error) {
+        proc.kill();
+      }
       return;
     }
 
     proc.kill();
+  }
+
+  private async cleanupStaleManagedServerForBaseUrl(baseUrl: string) {
+    try {
+      const targetUrl = new URL(baseUrl);
+      const port = Number(targetUrl.port || (targetUrl.protocol === "https:" ? 443 : 80));
+      await this.cleanupStaleManagedServer(targetUrl.hostname, port);
+    } catch {
+      // Ignore invalid configured URLs here; the normal connection path will report them.
+    }
+  }
+  private async cleanupStaleManagedServer(hostname: string, _port: number) {
+    if (process.platform !== "win32" || !this.isLoopbackHostname(hostname)) {
+      return;
+    }
+
+    const pids = await this.findLocalOpenCodeServePids();
+    await Promise.all(pids.map((pid) => this.runWindowsCommand("taskkill", ["/pid", String(pid), "/T", "/F"])));
+  }
+
+  private isLoopbackHostname(hostname: string) {
+    const normalized = hostname.toLowerCase();
+    return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1" || normalized === "[::1]";
+  }
+
+  private async findLocalOpenCodeServePids() {
+    const script = [
+      "Get-CimInstance Win32_Process",
+      "Where-Object { $_.Name -eq 'opencode.exe' -and $_.CommandLine -match '\\bserve\\b' -and $_.CommandLine -match '--hostname=(127\\.0\\.0\\.1|localhost|::1)' }",
+      "ForEach-Object { $_.ProcessId }",
+    ].join(" | ");
+    const output = await this.runWindowsCommand("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      script,
+    ]);
+
+    return output
+      .split(/\r?\n/)
+      .map((line) => Number(line.trim()))
+      .filter((pid) => Number.isInteger(pid) && pid > 0);
+  }
+
+  private async runWindowsCommand(command: string, args: string[]) {
+    return await new Promise<string>((resolve) => {
+      const proc = spawn(command, args, {
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      let output = "";
+
+      proc.stdout.on("data", (chunk: Buffer) => {
+        output += chunk.toString();
+      });
+      proc.on("error", () => resolve(""));
+      proc.on("exit", () => resolve(output));
+    });
   }
 
   private buildManagedServerEnv() {
@@ -2105,3 +2173,10 @@ export class OpenCodeService implements vscode.Disposable {
     return this.normalizeDirectoryForKey(left) === this.normalizeDirectoryForKey(right);
   }
 }
+
+
+
+
+
+
+
