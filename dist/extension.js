@@ -7095,7 +7095,7 @@ var OpenCodeService = class {
     });
     const url = await new Promise((resolve2, reject) => {
       const timeout = setTimeout(() => {
-        proc.kill();
+        this.killManagedServerProcess(proc);
         reject(new Error("Timed out while starting the OpenCode server."));
       }, 1e4);
       let output = "";
@@ -7166,8 +7166,23 @@ var OpenCodeService = class {
     if (!this.server) {
       return;
     }
-    this.server.process.kill();
+    this.killManagedServerProcess(this.server.process);
     this.server = void 0;
+  }
+  killManagedServerProcess(proc) {
+    if (proc.killed) {
+      return;
+    }
+    if (process.platform === "win32" && proc.pid) {
+      (0, import_node_child_process.spawn)("taskkill", ["/pid", String(proc.pid), "/T", "/F"], {
+        windowsHide: true,
+        stdio: "ignore"
+      }).on("error", () => {
+        proc.kill();
+      });
+      return;
+    }
+    proc.kill();
   }
   buildManagedServerEnv() {
     const env3 = {

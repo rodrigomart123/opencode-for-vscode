@@ -1630,7 +1630,7 @@ export class OpenCodeService implements vscode.Disposable {
 
     const url = await new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        proc.kill();
+        this.killManagedServerProcess(proc);
         reject(new Error("Timed out while starting the OpenCode server."));
       }, 10000);
       let output = "";
@@ -1709,8 +1709,26 @@ export class OpenCodeService implements vscode.Disposable {
       return;
     }
 
-    this.server.process.kill();
+    this.killManagedServerProcess(this.server.process);
     this.server = undefined;
+  }
+
+  private killManagedServerProcess(proc: ChildProcessWithoutNullStreams) {
+    if (proc.killed) {
+      return;
+    }
+
+    if (process.platform === "win32" && proc.pid) {
+      spawn("taskkill", ["/pid", String(proc.pid), "/T", "/F"], {
+        windowsHide: true,
+        stdio: "ignore",
+      }).on("error", () => {
+        proc.kill();
+      });
+      return;
+    }
+
+    proc.kill();
   }
 
   private buildManagedServerEnv() {
