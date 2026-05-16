@@ -7082,7 +7082,8 @@ var OpenCodeService = class {
     const args = [
       "serve",
       `--hostname=${hostname}`,
-      `--port=${String(port)}`
+      `--port=${String(port)}`,
+      "--print-logs"
     ];
     const env3 = this.buildManagedServerEnv();
     const command = await this.resolveOpencodeCommand(settings.opencodePath, env3.PATH);
@@ -7266,7 +7267,14 @@ var OpenCodeService = class {
       return void 0;
     }
     const hasExt = path.extname(command).length > 0;
-    const pathExtensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").map((item) => item.trim()).filter(Boolean) : [];
+    let pathExtensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").map((item) => item.trim()).filter(Boolean) : [];
+    if (process.platform === "win32" && !hasExt) {
+      const preferredExtensions = [".CMD", ".EXE", ".BAT", ".COM"];
+      pathExtensions = [
+        ...preferredExtensions,
+        ...pathExtensions.filter((ext) => !preferredExtensions.includes(ext.toUpperCase()))
+      ];
+    }
     for (const directory of directories) {
       const base = path.join(directory, command);
       const candidates = process.platform === "win32" && !hasExt ? pathExtensions.map((ext) => `${base}${ext}`) : [base];
@@ -7291,6 +7299,9 @@ var OpenCodeService = class {
     const candidates = [];
     const home = os.homedir();
     if (process.platform === "win32") {
+      if (process.env.APPDATA) {
+        candidates.push(path.join(process.env.APPDATA, "npm", "opencode.cmd"));
+      }
       if (process.env.LOCALAPPDATA) {
         candidates.push(path.join(process.env.LOCALAPPDATA, "Programs", "opencode", "opencode.exe"));
       }

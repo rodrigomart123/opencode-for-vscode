@@ -1616,6 +1616,7 @@ export class OpenCodeService implements vscode.Disposable {
       "serve",
       `--hostname=${hostname}`,
       `--port=${String(port)}`,
+      "--print-logs",
     ];
 
     const env = this.buildManagedServerEnv();
@@ -1836,12 +1837,19 @@ export class OpenCodeService implements vscode.Disposable {
     }
 
     const hasExt = path.extname(command).length > 0;
-    const pathExtensions = process.platform === "win32"
+    let pathExtensions = process.platform === "win32"
       ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM")
         .split(";")
         .map((item) => item.trim())
         .filter(Boolean)
       : [];
+    if (process.platform === "win32" && !hasExt) {
+      const preferredExtensions = [".CMD", ".EXE", ".BAT", ".COM"];
+      pathExtensions = [
+        ...preferredExtensions,
+        ...pathExtensions.filter((ext) => !preferredExtensions.includes(ext.toUpperCase())),
+      ];
+    }
 
     for (const directory of directories) {
       const base = path.join(directory, command);
@@ -1874,6 +1882,9 @@ export class OpenCodeService implements vscode.Disposable {
     const home = os.homedir();
 
     if (process.platform === "win32") {
+      if (process.env.APPDATA) {
+        candidates.push(path.join(process.env.APPDATA, "npm", "opencode.cmd"));
+      }
       if (process.env.LOCALAPPDATA) {
         candidates.push(path.join(process.env.LOCALAPPDATA, "Programs", "opencode", "opencode.exe"));
       }
