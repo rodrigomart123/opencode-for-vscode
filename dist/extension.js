@@ -513,7 +513,7 @@ var require_cross_spawn = __commonJS({
       enoent.hookChildProcess(spawned, parsed);
       return spawned;
     }
-    function spawnSync(command, args, options) {
+    function spawnSync2(command, args, options) {
       const parsed = parse(command, args, options);
       const result = cp.spawnSync(parsed.command, parsed.args, parsed.options);
       result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
@@ -521,7 +521,7 @@ var require_cross_spawn = __commonJS({
     }
     module2.exports = spawn2;
     module2.exports.spawn = spawn2;
-    module2.exports.sync = spawnSync;
+    module2.exports.sync = spawnSync2;
     module2.exports._parse = parse;
     module2.exports._enoent = enoent;
   }
@@ -5843,6 +5843,9 @@ var OpenCodeService = class {
     }
     const settings = this.getSettings();
     const baseUrl = settings.serverBaseUrl;
+    if (settings.autoStartServer) {
+      await this.cleanupStaleManagedServerForBaseUrl(baseUrl);
+    }
     this.connectionState = {
       status: "connecting",
       baseUrl,
@@ -6409,12 +6412,15 @@ var OpenCodeService = class {
     this.emitState();
     this.stopStream();
     this.currentDirectory = directory;
-    const baseUrl = this.getSettings().serverBaseUrl;
+    const settings = this.getSettings();
+    const baseUrl = settings.serverBaseUrl;
+    if (settings.autoStartServer) {
+      await this.cleanupStaleManagedServerForBaseUrl(baseUrl);
+    }
     try {
       this.client = this.createClient(baseUrl, directory);
       await this.client.path.get(REQUEST_OPTIONS);
     } catch (error) {
-      const settings = this.getSettings();
       if (!settings.autoStartServer) {
         this.connectionState = {
           status: "error",
@@ -7065,6 +7071,7 @@ var OpenCodeService = class {
     const settings = this.getSettings();
     const targetUrl = new URL(settings.serverBaseUrl);
     const preferredPort = Number(targetUrl.port || (targetUrl.protocol === "https:" ? 443 : 80));
+    await this.cleanupStaleManagedServer(targetUrl.hostname, preferredPort);
     try {
       return await this.spawnManagedServer(targetUrl.hostname, preferredPort, settings);
     } catch (error) {
@@ -7082,7 +7089,8 @@ var OpenCodeService = class {
     const args = [
       "serve",
       `--hostname=${hostname}`,
-      `--port=${String(port)}`
+      `--port=${String(port)}`,
+      "--print-logs"
     ];
     const env3 = this.buildManagedServerEnv();
     const command = await this.resolveOpencodeCommand(settings.opencodePath, env3.PATH);
@@ -7094,7 +7102,7 @@ var OpenCodeService = class {
     });
     const url = await new Promise((resolve2, reject) => {
       const timeout = setTimeout(() => {
-        proc.kill();
+        this.killManagedServerProcess(proc);
         reject(new Error("Timed out while starting the OpenCode server."));
       }, 1e4);
       let output = "";
@@ -7165,8 +7173,73 @@ var OpenCodeService = class {
     if (!this.server) {
       return;
     }
-    this.server.process.kill();
+    this.killManagedServerProcess(this.server.process);
     this.server = void 0;
+  }
+  killManagedServerProcess(proc) {
+    if (proc.killed) {
+      return;
+    }
+    if (process.platform === "win32" && proc.pid) {
+      const result = (0, import_node_child_process.spawnSync)("taskkill", ["/pid", String(proc.pid), "/T", "/F"], {
+        windowsHide: true,
+        stdio: "ignore"
+      });
+      if (result.error) {
+        proc.kill();
+      }
+      return;
+    }
+    proc.kill();
+  }
+  async cleanupStaleManagedServerForBaseUrl(baseUrl) {
+    try {
+      const targetUrl = new URL(baseUrl);
+      const port = Number(targetUrl.port || (targetUrl.protocol === "https:" ? 443 : 80));
+      await this.cleanupStaleManagedServer(targetUrl.hostname, port);
+    } catch {
+    }
+  }
+  async cleanupStaleManagedServer(hostname, _port) {
+    if (process.platform !== "win32" || !this.isLoopbackHostname(hostname)) {
+      return;
+    }
+    const pids = await this.findLocalOpenCodeServePids();
+    await Promise.all(pids.map((pid) => this.runWindowsCommand("taskkill", ["/pid", String(pid), "/T", "/F"])));
+  }
+  isLoopbackHostname(hostname) {
+    const normalized = hostname.toLowerCase();
+    return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1" || normalized === "[::1]";
+  }
+  async findLocalOpenCodeServePids() {
+    const script = [
+      "Get-CimInstance Win32_Process",
+      "Where-Object { $_.Name -eq 'opencode.exe' -and $_.CommandLine -match '\\bserve\\b' -and $_.CommandLine -match '--hostname=(127\\.0\\.0\\.1|localhost|::1)' }",
+      "ForEach-Object { $_.ProcessId }"
+    ].join(" | ");
+    const output = await this.runWindowsCommand("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      script
+    ]);
+    return output.split(/\r?\n/).map((line) => Number(line.trim())).filter((pid) => Number.isInteger(pid) && pid > 0);
+  }
+  async runWindowsCommand(command, args) {
+    return await new Promise((resolve2) => {
+      const proc = (0, import_node_child_process.spawn)(command, args, {
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "ignore"]
+      });
+      let output = "";
+      proc.stdout.on("data", (chunk) => {
+        output += chunk.toString();
+      });
+      proc.on("error", () => resolve2(""));
+      proc.on("exit", () => resolve2(output));
+    });
   }
   buildManagedServerEnv() {
     const env3 = {
@@ -7266,7 +7339,14 @@ var OpenCodeService = class {
       return void 0;
     }
     const hasExt = path.extname(command).length > 0;
-    const pathExtensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").map((item) => item.trim()).filter(Boolean) : [];
+    let pathExtensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").map((item) => item.trim()).filter(Boolean) : [];
+    if (process.platform === "win32" && !hasExt) {
+      const preferredExtensions = [".CMD", ".EXE", ".BAT", ".COM"];
+      pathExtensions = [
+        ...preferredExtensions,
+        ...pathExtensions.filter((ext) => !preferredExtensions.includes(ext.toUpperCase()))
+      ];
+    }
     for (const directory of directories) {
       const base = path.join(directory, command);
       const candidates = process.platform === "win32" && !hasExt ? pathExtensions.map((ext) => `${base}${ext}`) : [base];
@@ -7291,6 +7371,9 @@ var OpenCodeService = class {
     const candidates = [];
     const home = os.homedir();
     if (process.platform === "win32") {
+      if (process.env.APPDATA) {
+        candidates.push(path.join(process.env.APPDATA, "npm", "opencode.cmd"));
+      }
       if (process.env.LOCALAPPDATA) {
         candidates.push(path.join(process.env.LOCALAPPDATA, "Programs", "opencode", "opencode.exe"));
       }

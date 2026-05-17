@@ -2,7 +2,7 @@
   "name": "opencode-for-vscode",
   "displayName": "OpenCode VS Code",
   "description": "VS Code sidebar client for OpenCode sessions.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "rodrigomart123",
   "license": "MIT",
   "icon": "icon.png",
