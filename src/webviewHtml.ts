@@ -233,6 +233,100 @@ const themePreload = `;(function () {
   }
 })()`;
 
+const storagePreload = `;(function () {
+  function allow(key) {
+    return key === "settings.v3" || key.indexOf("opencode.global.dat:") === 0 || key.indexOf("opencode.settings.dat:") === 0 || key.indexOf("opencode-theme-") === 0
+  }
+
+  function emit(key, value) {
+    try {
+      window.dispatchEvent(new StorageEvent("storage", {
+        key: key,
+        oldValue: null,
+        newValue: value,
+        storageArea: localStorage,
+        url: location.href,
+      }))
+    } catch {
+      try {
+        var event = document.createEvent("StorageEvent")
+        event.initStorageEvent("storage", false, false, key, null, value, location.href, localStorage)
+        window.dispatchEvent(event)
+      } catch {}
+    }
+  }
+
+  function sync(key, value) {
+    var send = window.__OPENCODE_VSCODE_SYNC_STORAGE__
+    if (typeof send === "function") {
+      send(key, value)
+    }
+  }
+
+  var cfg = window.__OPENCODE_VSCODE_CONFIG__ || {}
+  var shared = cfg.sharedStorage && typeof cfg.sharedStorage === "object" ? cfg.sharedStorage : null
+
+  if (shared) {
+    for (var key in shared) {
+      if (!Object.prototype.hasOwnProperty.call(shared, key)) continue
+      if (!allow(key)) continue
+      var value = shared[key]
+      if (typeof value !== "string") continue
+      try {
+        localStorage.setItem(key, value)
+      } catch {}
+    }
+  }
+
+  var proto = Storage.prototype
+  var setItem = proto.setItem
+  var removeItem = proto.removeItem
+  var muted = false
+
+  proto.setItem = function (key, value) {
+    if (this !== localStorage) {
+      return setItem.call(this, key, value)
+    }
+
+    var next = String(value)
+    var out = setItem.call(localStorage, key, next)
+    if (!muted && allow(key)) {
+      sync(key, next)
+    }
+    emit(key, next)
+    return out
+  }
+
+  proto.removeItem = function (key) {
+    if (this !== localStorage) {
+      return removeItem.call(this, key)
+    }
+
+    var out = removeItem.call(localStorage, key)
+    if (!muted && allow(key)) {
+      sync(key, null)
+    }
+    emit(key, null)
+    return out
+  }
+
+  window.addEventListener("message", function (event) {
+    var message = event.data
+    if (!message || message.type !== "storageSync" || !allow(message.key)) return
+
+    muted = true
+    try {
+      if (message.value === null) {
+        removeItem.call(localStorage, message.key)
+      } else {
+        setItem.call(localStorage, message.key, message.value)
+      }
+    } catch {}
+    muted = false
+    emit(message.key, message.value)
+  })
+})()`;
+
 export function getWebviewHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
@@ -243,6 +337,7 @@ export function getWebviewHtml(
     colorScheme: "light" | "dark";
     disableHealthCheck: boolean;
     settingsMode?: boolean;
+    sharedStorage?: Record<string, string>;
     nativeSettings?: Record<string, unknown>;
   },
 ) {
@@ -290,6 +385,7 @@ export function getWebviewHtml(
     <link href="${styleUri}" rel="stylesheet" />
     ${settingsBootStyle}
     <script nonce="${nonce}">window.__OPENCODE_VSCODE_CONFIG__ = ${JSON.stringify(config)};</script>
+    <script nonce="${nonce}">${storagePreload}</script>
     <script nonce="${nonce}">${themePreload}</script>
     <title>OpenCode</title>
   </head>

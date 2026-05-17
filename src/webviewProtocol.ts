@@ -16,6 +16,10 @@ export type HostToWebviewMessage = {
   type: "hostTheme";
   colorScheme: "light" | "dark";
 } | {
+  type: "storageSync";
+  key: string;
+  value: string | null;
+} | {
   type: "pickDirectoryResult";
   requestId: string;
   value: string | string[] | null;
@@ -88,6 +92,15 @@ export type WebviewToHostMessage =
   | {
       type: "fetchAbort";
       requestId: string;
+    }
+  | {
+      type: "storageSet";
+      key: string;
+      value: string;
+    }
+  | {
+      type: "storageRemove";
+      key: string;
     }
   | {
       type: "getExtensionSettings";

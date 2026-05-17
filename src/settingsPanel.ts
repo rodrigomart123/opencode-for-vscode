@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { getWebviewHtml } from "./webviewHtml";
 import { OpenCodeService } from "./opencodeService";
+import { storageBridge } from "./storageBridge";
 import type {
   ExtensionSettingKey,
   ExtensionSettings,
@@ -42,6 +43,7 @@ export class OpenCodeSettingsPanel implements vscode.Disposable {
   private readonly pendingMessages: HostToWebviewMessage[] = [];
   private readonly fetches = new Map<string, AbortController>();
   private panelDisposables: vscode.Disposable[] = [];
+  private readonly stop = storageBridge.register("settings", (message) => this.postMessage(message));
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -49,6 +51,7 @@ export class OpenCodeSettingsPanel implements vscode.Disposable {
   ) {}
 
   dispose() {
+    this.stop();
     for (const abort of this.fetches.values()) {
       abort.abort();
     }
@@ -168,6 +171,7 @@ export class OpenCodeSettingsPanel implements vscode.Disposable {
       if (message.type === "webviewReady") {
         this.ready = true;
         this.flushMessages();
+        storageBridge.ready("settings");
         return;
       }
 
@@ -235,6 +239,11 @@ export class OpenCodeSettingsPanel implements vscode.Disposable {
         return;
       }
 
+      if (message.type === "storageSet" || message.type === "storageRemove") {
+        storageBridge.apply("settings", message);
+        return;
+      }
+
       if (message.type === "restartServer") {
         try {
           await vscode.commands.executeCommand("opencodeVisual.restartServer");
@@ -288,6 +297,7 @@ export class OpenCodeSettingsPanel implements vscode.Disposable {
         colorScheme: this.getColorScheme(),
         disableHealthCheck,
         settingsMode: true,
+        sharedStorage: storageBridge.snapshot(),
         nativeSettings: this.getNativeSettings(),
       });
     } catch (error) {

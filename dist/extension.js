@@ -7692,6 +7692,99 @@ var themePreload = `;(function () {
     document.head.appendChild(style)
   }
 })()`;
+var storagePreload = `;(function () {
+  function allow(key) {
+    return key === "settings.v3" || key.indexOf("opencode.global.dat:") === 0 || key.indexOf("opencode.settings.dat:") === 0 || key.indexOf("opencode-theme-") === 0
+  }
+
+  function emit(key, value) {
+    try {
+      window.dispatchEvent(new StorageEvent("storage", {
+        key: key,
+        oldValue: null,
+        newValue: value,
+        storageArea: localStorage,
+        url: location.href,
+      }))
+    } catch {
+      try {
+        var event = document.createEvent("StorageEvent")
+        event.initStorageEvent("storage", false, false, key, null, value, location.href, localStorage)
+        window.dispatchEvent(event)
+      } catch {}
+    }
+  }
+
+  function sync(key, value) {
+    var send = window.__OPENCODE_VSCODE_SYNC_STORAGE__
+    if (typeof send === "function") {
+      send(key, value)
+    }
+  }
+
+  var cfg = window.__OPENCODE_VSCODE_CONFIG__ || {}
+  var shared = cfg.sharedStorage && typeof cfg.sharedStorage === "object" ? cfg.sharedStorage : null
+
+  if (shared) {
+    for (var key in shared) {
+      if (!Object.prototype.hasOwnProperty.call(shared, key)) continue
+      if (!allow(key)) continue
+      var value = shared[key]
+      if (typeof value !== "string") continue
+      try {
+        localStorage.setItem(key, value)
+      } catch {}
+    }
+  }
+
+  var proto = Storage.prototype
+  var setItem = proto.setItem
+  var removeItem = proto.removeItem
+  var muted = false
+
+  proto.setItem = function (key, value) {
+    if (this !== localStorage) {
+      return setItem.call(this, key, value)
+    }
+
+    var next = String(value)
+    var out = setItem.call(localStorage, key, next)
+    if (!muted && allow(key)) {
+      sync(key, next)
+    }
+    emit(key, next)
+    return out
+  }
+
+  proto.removeItem = function (key) {
+    if (this !== localStorage) {
+      return removeItem.call(this, key)
+    }
+
+    var out = removeItem.call(localStorage, key)
+    if (!muted && allow(key)) {
+      sync(key, null)
+    }
+    emit(key, null)
+    return out
+  }
+
+  window.addEventListener("message", function (event) {
+    var message = event.data
+    if (!message || message.type !== "storageSync" || !allow(message.key)) return
+
+    muted = true
+    try {
+      if (message.value === null) {
+        removeItem.call(localStorage, message.key)
+      } else {
+        setItem.call(localStorage, message.key, message.value)
+      }
+    } catch {}
+    muted = false
+    emit(message.key, message.value)
+  })
+})()`;
 function getWebviewHtml(webview, extensionUri, config) {
   const nonce = createNonce();
   const scriptUri = webview.asWebviewUri(vscode2.Uri.joinPath(extensionUri, "media", "app", "app.js"));
@@ -7734,6 +7827,7 @@ function getWebviewHtml(webview, extensionUri, config) {
     <link href="${styleUri}" rel="stylesheet" />
     ${settingsBootStyle}
     <script nonce="${nonce}">window.__OPENCODE_VSCODE_CONFIG__ = ${JSON.stringify(config)};</script>
+    <script nonce="${nonce}">${storagePreload}</script>
     <script nonce="${nonce}">${themePreload}</script>
     <title>OpenCode</title>
   </head>
@@ -7743,6 +7837,54 @@ function getWebviewHtml(webview, extensionUri, config) {
   </body>
 </html>`;
 }
+
+// src/storageBridge.ts
+var shared = [
+  "settings.v3",
+  "opencode.global.dat:",
+  "opencode.settings.dat:",
+  "opencode-theme-"
+];
+function sharedKey(key) {
+  return shared.some((item) => item.endsWith(":") ? key.startsWith(item) : key.startsWith(item));
+}
+var WebviewStorageBridge = class {
+  data = /* @__PURE__ */ new Map();
+  sinks = /* @__PURE__ */ new Map();
+  register(id, sink) {
+    this.sinks.set(id, sink);
+    return () => this.sinks.delete(id);
+  }
+  snapshot() {
+    return Object.fromEntries(this.data);
+  }
+  ready(id) {
+    const sink = this.sinks.get(id);
+    if (!sink) return;
+    for (const [key, value] of this.data) {
+      sink({ type: "storageSync", key, value });
+    }
+  }
+  apply(id, message) {
+    if (!sharedKey(message.key)) return;
+    if (message.type === "storageSet") {
+      if (this.data.get(message.key) === message.value) return;
+      this.data.set(message.key, message.value);
+      this.broadcast(id, { type: "storageSync", key: message.key, value: message.value });
+      return;
+    }
+    if (!this.data.has(message.key)) return;
+    this.data.delete(message.key);
+    this.broadcast(id, { type: "storageSync", key: message.key, value: null });
+  }
+  broadcast(id, message) {
+    for (const [key, sink] of this.sinks) {
+      if (key === id) continue;
+      sink(message);
+    }
+  }
+};
+var storageBridge = new WebviewStorageBridge();
 
 // src/sidebarProvider.ts
 var OpenCodeSidebarProvider = class _OpenCodeSidebarProvider {
@@ -7770,7 +7912,9 @@ var OpenCodeSidebarProvider = class _OpenCodeSidebarProvider {
   view;
   ready = false;
   pendingMessages = [];
+  stop = storageBridge.register("sidebar", (message) => this.postMessage(message));
   dispose() {
+    this.stop();
     vscode3.Disposable.from(...this.disposables).dispose();
   }
   async reveal() {
@@ -7835,6 +7979,7 @@ var OpenCodeSidebarProvider = class _OpenCodeSidebarProvider {
         this.ready = true;
         this.flushMessages();
         this.notifyTheme();
+        storageBridge.ready("sidebar");
         return;
       }
       if (message.type === "openLink") {
@@ -7893,6 +8038,10 @@ var OpenCodeSidebarProvider = class _OpenCodeSidebarProvider {
         }
         return;
       }
+      if (message.type === "storageSet" || message.type === "storageRemove") {
+        storageBridge.apply("sidebar", message);
+        return;
+      }
       if (message.type === "restartServer") {
         try {
           await vscode3.commands.executeCommand("opencodeVisual.restartServer");
@@ -7937,6 +8086,7 @@ var OpenCodeSidebarProvider = class _OpenCodeSidebarProvider {
       workspaceDirectory,
       colorScheme: this.getColorScheme(),
       disableHealthCheck,
+      sharedStorage: storageBridge.snapshot(),
       nativeSettings: this.getNativeSettings()
     });
   }
@@ -8196,7 +8346,9 @@ var OpenCodeSettingsPanel = class {
   pendingMessages = [];
   fetches = /* @__PURE__ */ new Map();
   panelDisposables = [];
+  stop = storageBridge.register("settings", (message) => this.postMessage(message));
   dispose() {
+    this.stop();
     for (const abort of this.fetches.values()) {
       abort.abort();
     }
@@ -8302,6 +8454,7 @@ var OpenCodeSettingsPanel = class {
       if (message.type === "webviewReady") {
         this.ready = true;
         this.flushMessages();
+        storageBridge.ready("settings");
         return;
       }
       if (message.type === "openLink") {
@@ -8360,6 +8513,10 @@ var OpenCodeSettingsPanel = class {
         }
         return;
       }
+      if (message.type === "storageSet" || message.type === "storageRemove") {
+        storageBridge.apply("settings", message);
+        return;
+      }
       if (message.type === "restartServer") {
         try {
           await vscode4.commands.executeCommand("opencodeVisual.restartServer");
@@ -8409,6 +8566,7 @@ var OpenCodeSettingsPanel = class {
         colorScheme: this.getColorScheme(),
         disableHealthCheck,
         settingsMode: true,
+        sharedStorage: storageBridge.snapshot(),
         nativeSettings: this.getNativeSettings()
       });
     } catch (error) {

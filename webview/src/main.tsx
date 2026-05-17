@@ -19,6 +19,7 @@ declare global {
       disableHealthCheck?: boolean;
       settingsMode?: boolean;
     };
+    __OPENCODE_VSCODE_SYNC_STORAGE__?: (key: string, value: string | null) => void;
     acquireVsCodeApi?: () => {
       postMessage: (message: WebviewToHostMessage) => void;
     };
@@ -38,6 +39,19 @@ if (!cfg || !cfg.serverUrl) {
 const config = cfg;
 
 const vscode = window.acquireVsCodeApi?.();
+window.__OPENCODE_VSCODE_SYNC_STORAGE__ = (key, value) => {
+  if (!vscode) {
+    return;
+  }
+
+  if (value === null) {
+    vscode.postMessage({ type: "storageRemove", key });
+    return;
+  }
+
+  vscode.postMessage({ type: "storageSet", key, value });
+};
+
 const nativeFetch = globalThis.fetch.bind(globalThis);
 const DEFAULT_SERVER_URL_KEY = "opencode.settings.dat:defaultServerUrl";
 const LAST_SESSION_KEY = "opencode.global.dat:layout.page";

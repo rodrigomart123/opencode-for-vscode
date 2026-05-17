@@ -2,6 +2,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { getWebviewHtml } from "./webviewHtml";
 import { OpenCodeService } from "./opencodeService";
+import { storageBridge } from "./storageBridge";
 import type {
   ExtensionSettingKey,
   ExtensionSettings,
@@ -48,6 +49,7 @@ export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vsco
   private view?: vscode.WebviewView;
   private ready = false;
   private readonly pendingMessages: HostToWebviewMessage[] = [];
+  private readonly stop = storageBridge.register("sidebar", (message) => this.postMessage(message));
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -67,6 +69,7 @@ export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vsco
   }
 
   dispose() {
+    this.stop();
     vscode.Disposable.from(...this.disposables).dispose();
   }
 
@@ -145,6 +148,7 @@ export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vsco
         this.ready = true;
         this.flushMessages();
         this.notifyTheme();
+        storageBridge.ready("sidebar");
         return;
       }
 
@@ -212,6 +216,11 @@ export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vsco
         return;
       }
 
+      if (message.type === "storageSet" || message.type === "storageRemove") {
+        storageBridge.apply("sidebar", message);
+        return;
+      }
+
       if (message.type === "restartServer") {
         try {
           await vscode.commands.executeCommand("opencodeVisual.restartServer");
@@ -259,6 +268,7 @@ export class OpenCodeSidebarProvider implements vscode.WebviewViewProvider, vsco
       workspaceDirectory,
       colorScheme: this.getColorScheme(),
       disableHealthCheck,
+      sharedStorage: storageBridge.snapshot(),
       nativeSettings: this.getNativeSettings(),
     });
   }
