@@ -5843,9 +5843,6 @@ var OpenCodeService = class {
     }
     const settings = this.getSettings();
     const baseUrl = settings.serverBaseUrl;
-    if (settings.autoStartServer) {
-      await this.cleanupStaleManagedServerForBaseUrl(baseUrl);
-    }
     this.connectionState = {
       status: "connecting",
       baseUrl,
@@ -6414,9 +6411,6 @@ var OpenCodeService = class {
     this.currentDirectory = directory;
     const settings = this.getSettings();
     const baseUrl = settings.serverBaseUrl;
-    if (settings.autoStartServer) {
-      await this.cleanupStaleManagedServerForBaseUrl(baseUrl);
-    }
     try {
       this.client = this.createClient(baseUrl, directory);
       await this.client.path.get(REQUEST_OPTIONS);

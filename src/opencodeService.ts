@@ -154,9 +154,6 @@ export class OpenCodeService implements vscode.Disposable {
 
     const settings = this.getSettings();
     const baseUrl = settings.serverBaseUrl;
-    if (settings.autoStartServer) {
-      await this.cleanupStaleManagedServerForBaseUrl(baseUrl);
-    }
     this.connectionState = {
       status: "connecting",
       baseUrl,
@@ -822,9 +819,6 @@ export class OpenCodeService implements vscode.Disposable {
     this.currentDirectory = directory;
     const settings = this.getSettings();
     const baseUrl = settings.serverBaseUrl;
-    if (settings.autoStartServer) {
-      await this.cleanupStaleManagedServerForBaseUrl(baseUrl);
-    }
 
     try {
       this.client = this.createClient(baseUrl, directory);
