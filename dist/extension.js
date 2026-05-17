@@ -5801,6 +5801,8 @@ var OpenCodeService = class {
   networkNoticeUntil = 0;
   currentDirectory;
   bootstrapPromise;
+  serverStartPromise;
+  connectPromise;
   sessions = [];
   thread = [];
   permissions = /* @__PURE__ */ new Map();
@@ -6401,6 +6403,18 @@ var OpenCodeService = class {
     return this.client;
   }
   async connect(directory) {
+    if (this.connectPromise) {
+      await this.connectPromise;
+      return;
+    }
+    this.connectPromise = this.doConnect(directory);
+    try {
+      await this.connectPromise;
+    } finally {
+      this.connectPromise = void 0;
+    }
+  }
+  async doConnect(directory) {
     this.connectionState = {
       status: "connecting",
       baseUrl: this.getSettings().serverBaseUrl,
@@ -7061,6 +7075,17 @@ var OpenCodeService = class {
     };
   }
   async startManagedServer() {
+    if (this.serverStartPromise) {
+      return this.serverStartPromise;
+    }
+    this.serverStartPromise = this.doStartManagedServer();
+    try {
+      return await this.serverStartPromise;
+    } finally {
+      this.serverStartPromise = void 0;
+    }
+  }
+  async doStartManagedServer() {
     this.stopServer();
     const settings = this.getSettings();
     const targetUrl = new URL(settings.serverBaseUrl);

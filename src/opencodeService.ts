@@ -94,6 +94,8 @@ export class OpenCodeService implements vscode.Disposable {
   private networkNoticeUntil = 0;
   private currentDirectory?: string;
   private bootstrapPromise?: Promise<void>;
+  private serverStartPromise?: Promise<LocalServerHandle>;
+  private connectPromise?: Promise<void>;
 
   private sessions: Session[] = [];
   private thread: ThreadEntry[] = [];
@@ -808,6 +810,20 @@ export class OpenCodeService implements vscode.Disposable {
   }
 
   private async connect(directory: string) {
+    if (this.connectPromise) {
+      await this.connectPromise;
+      return;
+    }
+
+    this.connectPromise = this.doConnect(directory);
+    try {
+      await this.connectPromise;
+    } finally {
+      this.connectPromise = undefined;
+    }
+  }
+
+  private async doConnect(directory: string) {
     this.connectionState = {
       status: "connecting",
       baseUrl: this.getSettings().serverBaseUrl,
@@ -1587,6 +1603,19 @@ export class OpenCodeService implements vscode.Disposable {
   }
 
   private async startManagedServer() {
+    if (this.serverStartPromise) {
+      return this.serverStartPromise;
+    }
+
+    this.serverStartPromise = this.doStartManagedServer();
+    try {
+      return await this.serverStartPromise;
+    } finally {
+      this.serverStartPromise = undefined;
+    }
+  }
+
+  private async doStartManagedServer() {
     this.stopServer();
     const settings = this.getSettings();
     const targetUrl = new URL(settings.serverBaseUrl);
